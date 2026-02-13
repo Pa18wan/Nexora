@@ -1,0 +1,139 @@
+.my-documents-page {
+    animation: fadeIn 0.5s ease-out;
+}
+
+.my-documents-page .page-header {
+    margin-bottom: 2rem;
+}
+
+.my-documents-page .header-title {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.my-documents-page .header-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    background: var(--bg-liquid);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-primary);
+    border: 1px solid var(--border-liquid);
+}
+
+.documents-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.5rem;
+}
+
+.document-card {
+    display: flex;
+    flex-direction: column;
+    padding: 1.25rem !important;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.document-card:hover {
+    transform: translateY(-5px);
+}
+
+.document-preview {
+    height: 120px;
+    background: var(--bg-tertiary);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 1rem;
+    position: relative;
+    border: 1px solid var(--border-liquid);
+}
+
+.doc-category {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+}
+
+.document-info {
+    flex-grow: 1;
+}
+
+.document-info h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.doc-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-bottom: 0.75rem;
+}
+
+.doc-case {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.8rem;
+    color: var(--color-primary);
+    background: rgba(var(--color-primary-rgb), 0.05);
+    padding: 0.4rem 0.75rem;
+    border-radius: 6px;
+    width: fit-content;
+    max-width: 100%;
+}
+
+.doc-case span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.document-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border-liquid);
+}
+
+.icon-pdf {
+    color: #ef4444;
+}
+
+.icon-image {
+    color: #10b981;
+}
+
+.icon-doc {
+    color: #3b82f6;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 4rem 2rem !important;
+    color: var(--text-muted);
+}
+
+.empty-state svg {
+    margin-bottom: 1.5rem;
+    opacity: 0.5;
+}
+
+@media (max-width: 640px) {
+    .documents-grid {
+        grid-template-columns: 1fr;
+    }
+}

@@ -1,0 +1,191 @@
+.notifications-page {
+    max-width: 900px;
+    margin: 0 auto;
+    animation: fadeIn 0.5s ease-out;
+}
+
+.notifications-page .page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.notifications-page .header-title {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.notifications-page .header-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    background: var(--bg-liquid);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-primary);
+    border: 1px solid var(--border-liquid);
+}
+
+.notifications-page h1 {
+    font-size: 1.75rem;
+    margin-bottom: 0.25rem;
+}
+
+.notifications-page .filter-tabs {
+    display: flex;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border-liquid);
+    padding-bottom: 0.5rem;
+}
+
+.notifications-page .filter-tab {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 1rem;
+    font-weight: 500;
+    padding: 0.5rem 0;
+    cursor: pointer;
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.3s ease;
+}
+
+.notifications-page .filter-tab:hover {
+    color: var(--text-primary);
+}
+
+.notifications-page .filter-tab.active {
+    color: var(--color-primary);
+}
+
+.notifications-page .filter-tab.active::after {
+    content: '';
+    position: absolute;
+    bottom: -0.5rem;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background: var(--color-primary);
+}
+
+.notifications-page .tab-count {
+    padding: 0.1rem 0.5rem;
+    font-size: 0.75rem;
+}
+
+.notifications-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.notification-item {
+    display: flex;
+    gap: 1.5rem;
+    padding: 1.25rem !important;
+    cursor: pointer;
+    position: relative;
+    transition: all 0.3s ease;
+}
+
+.notification-item.unread {
+    background: rgba(var(--color-primary-rgb), 0.05) !important;
+    border-color: rgba(var(--color-primary-rgb), 0.3) !important;
+}
+
+.notification-item:hover {
+    transform: translateX(5px);
+}
+
+.notification-icon {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    border-radius: 10px;
+    background: var(--bg-tertiary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.notification-content {
+    flex: 1;
+}
+
+.notification-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 0.5rem;
+}
+
+.notification-top h3 {
+    font-size: 1.1rem;
+    margin: 0;
+}
+
+.notification-time {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.notification-content p {
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    line-height: 1.5;
+    margin: 0;
+}
+
+.unread-dot {
+    width: 8px;
+    height: 8px;
+    background: var(--color-primary);
+    border-radius: 50%;
+    position: absolute;
+    top: 1.25rem;
+    right: 1.25rem;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 4rem 2rem !important;
+}
+
+.empty-icon {
+    color: var(--text-muted);
+    margin-bottom: 1.5rem;
+    opacity: 0.3;
+}
+
+.icon-blue {
+    color: #3b82f6;
+}
+
+.icon-purple {
+    color: #8b5cf6;
+}
+
+.icon-cyan {
+    color: #06b6d4;
+}
+
+.icon-warning {
+    color: #f59e0b;
+}
+
+@media (max-width: 640px) {
+    .notification-top {
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+}

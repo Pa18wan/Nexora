@@ -1,0 +1,87 @@
+/* ============================================
+   NEXORA - Input Styles
+   ============================================ */
+
+.input-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+}
+
+.input-label {
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.input-container {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.input-field {
+    width: 100%;
+    padding: var(--space-md);
+    background: var(--input-bg);
+    border: 1px solid var(--input-border);
+    border-radius: var(--radius-lg);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: var(--font-size-base);
+    transition: all var(--transition-fast);
+}
+
+.input-field:focus {
+    outline: none;
+    border-color: var(--input-focus);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+}
+
+.input-field::placeholder {
+    color: var(--text-muted);
+}
+
+.input-field.has-left-icon {
+    padding-left: 44px;
+}
+
+.input-field.has-right-icon {
+    padding-right: 44px;
+}
+
+.input-icon {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    z-index: 1;
+}
+
+.input-icon.left {
+    left: var(--space-md);
+}
+
+.input-icon.right {
+    right: var(--space-md);
+}
+
+.input-error {
+    font-size: var(--font-size-sm);
+    color: var(--color-danger);
+}
+
+.input-hint {
+    font-size: var(--font-size-xs);
+    color: var(--text-muted);
+}
+
+/* Error State */
+.input-wrapper.has-error .input-field {
+    border-color: var(--color-danger);
+}
+
+.input-wrapper.has-error .input-field:focus {
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15);
+}

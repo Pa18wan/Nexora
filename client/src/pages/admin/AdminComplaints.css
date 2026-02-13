@@ -1,0 +1,157 @@
+.admin-complaints-page {
+    animation: fadeIn 0.5s ease-out;
+}
+
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.header-actions {
+    display: flex;
+    gap: 1rem;
+}
+
+.filter-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--bg-tertiary);
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    border: 1px solid var(--border-liquid);
+}
+
+.status-select {
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    cursor: pointer;
+    outline: none;
+}
+
+.complaints-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.complaint-card {
+    padding: 1.5rem !important;
+    border-left: 4px solid var(--color-primary);
+}
+
+.complaint-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    border-bottom: 1px solid var(--border-liquid);
+    padding-bottom: 0.75rem;
+}
+
+.complaint-meta {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.complaint-type {
+    font-weight: 600;
+    color: var(--color-primary);
+    font-size: 0.9rem;
+}
+
+.complaint-date {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.parties-row {
+    display: flex;
+    gap: 2rem;
+    margin-bottom: 1rem;
+}
+
+.party {
+    display: flex;
+    flex-direction: column;
+}
+
+.party label {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+}
+
+.party span {
+    font-weight: 500;
+}
+
+.description {
+    margin-bottom: 1.5rem;
+}
+
+.description label {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-bottom: 0.25rem;
+}
+
+.description p {
+    color: var(--text-secondary);
+    line-height: 1.6;
+}
+
+.resolution-area {
+    background: var(--bg-tertiary);
+    padding: 1rem;
+    border-radius: 8px;
+}
+
+.resolution-area textarea {
+    width: 100%;
+    margin-bottom: 1rem;
+    padding: 0.75rem;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-liquid);
+    border-radius: 6px;
+    color: var(--text-primary);
+    resize: vertical;
+}
+
+.action-buttons {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: flex-end;
+}
+
+.resolution-info {
+    background: rgba(16, 185, 129, 0.05);
+    padding: 1rem;
+    border-radius: 8px;
+    border: 1px solid rgba(16, 185, 129, 0.1);
+}
+
+.resolution-info label {
+    font-size: 0.8rem;
+    color: var(--color-success);
+    font-weight: 600;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 3rem;
+    color: var(--text-muted);
+}
+
+@media (max-width: 768px) {
+    .parties-row {
+        flex-direction: column;
+        gap: 1rem;
+    }
+}

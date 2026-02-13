@@ -1,0 +1,69 @@
+/* ============================================
+   NEXORA - Badge Styles
+   ============================================ */
+
+.badge {
+    display: inline-flex;
+    align-items: center;
+    font-weight: 500;
+    border-radius: var(--radius-full);
+    white-space: nowrap;
+}
+
+/* Sizes */
+.badge-sm {
+    padding: 2px 8px;
+    font-size: var(--font-size-xs);
+}
+
+.badge-md {
+    padding: 4px 12px;
+    font-size: var(--font-size-sm);
+}
+
+/* Variants */
+.badge-default {
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+}
+
+.badge-primary {
+    background: rgba(99, 102, 241, 0.15);
+    color: var(--color-primary);
+    border: 1px solid rgba(99, 102, 241, 0.3);
+}
+
+.badge-success {
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--color-success);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.badge-warning {
+    background: rgba(245, 158, 11, 0.15);
+    color: var(--color-warning);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.badge-danger {
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--color-danger);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.badge-info {
+    background: rgba(59, 130, 246, 0.15);
+    color: var(--color-info);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.badge-secondary {
+    background: rgba(139, 92, 246, 0.15);
+    color: var(--color-secondary);
+    border: 1px solid rgba(139, 92, 246, 0.3);
+}
+
+.badge-rounded {
+    border-radius: 9999px;
+}

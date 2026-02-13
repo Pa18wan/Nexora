@@ -1,0 +1,51 @@
+/* ============================================
+   NEXORA - Theme Toggle Styles
+   ============================================ */
+
+.theme-toggle {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+}
+
+.theme-toggle-track {
+    position: relative;
+    width: 52px;
+    height: 28px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-full);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 6px;
+}
+
+.theme-icon {
+    color: var(--text-muted);
+    transition: color var(--transition-fast);
+    z-index: 1;
+}
+
+.theme-icon.sun {
+    color: var(--color-warning);
+}
+
+.theme-icon.moon {
+    color: var(--color-primary);
+}
+
+.theme-toggle-thumb {
+    position: absolute;
+    width: 22px;
+    height: 22px;
+    background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+    border-radius: 50%;
+    transition: transform var(--transition-base);
+    left: 3px;
+}
+
+.theme-toggle-thumb.dark {
+    transform: translateX(24px);
+}
