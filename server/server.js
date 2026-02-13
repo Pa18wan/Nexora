@@ -97,12 +97,14 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
-    console.log(`
+if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+    app.listen(PORT, () => {
+        console.log(`
 🚀 Server running on port ${PORT}
 📚 API Docs: http://localhost:${PORT}/api/health
 🔐 Environment: ${process.env.NODE_ENV || 'development'}
   `);
-});
+    });
+}
 
 export default app;
