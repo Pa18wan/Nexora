@@ -106,6 +106,7 @@ export const adminAPI = {
     getUsers: (params?: any) => api.get('/admin/users', { params }),
     updateUserStatus: (userId: string, status: string, reason?: string) => api.put(`/admin/users/${userId}/status`, { action: status, reason }),
     getAdvocates: (params?: any) => api.get('/admin/advocates/pending', { params }), // Currently only pending
+    getPendingAdvocates: (params?: any) => api.get('/admin/advocates/pending', { params }),
     verifyAdvocate: (advocateId: string, action: string, reason?: string) => api.put(`/admin/advocates/${advocateId}/verify`, { action, reason }),
     getSettings: () => api.get('/admin/settings'),
     updateSettings: (updates: any[]) => api.put('/admin/settings', { updates }),

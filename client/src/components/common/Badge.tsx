@@ -24,7 +24,7 @@ export function Badge({
 }
 
 interface UrgencyBadgeProps {
-    level: 'low' | 'medium' | 'high' | 'critical';
+    level: string;
     size?: 'sm' | 'md';
     className?: string;
 }
@@ -38,8 +38,8 @@ export function UrgencyBadge({ level, size = 'sm', className = '' }: UrgencyBadg
     };
 
     return (
-        <Badge variant={variants[level]} size={size} className={className}>
-            {level.toUpperCase()}
+        <Badge variant={variants[level] || 'info'} size={size} className={className}>
+            {level ? level.toUpperCase() : 'UNKNOWN'}
         </Badge>
     );
 }

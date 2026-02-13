@@ -173,7 +173,7 @@ export function LandingPage() {
                         <div className="hero-trust">
                             <div className="trust-avatars">
                                 {['PS', 'RK', 'AM', 'VN', 'SK'].map((initials, i) => (
-                                    <div key={i} className="trust-avatar" style={{ '--delay': i }}>
+                                    <div key={i} className="trust-avatar" style={{ '--delay': i } as React.CSSProperties}>
                                         {initials}
                                     </div>
                                 ))}

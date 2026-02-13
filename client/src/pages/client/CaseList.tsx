@@ -116,7 +116,7 @@ export function CaseList() {
                             <GlassCard variant="liquid" hover className="case-card">
                                 <div className="case-top">
                                     <div className="case-category">{caseItem.category}</div>
-                                    <UrgencyBadge urgency={caseItem.aiAnalysis?.urgencyLevel || 'medium'} />
+                                    <UrgencyBadge level={caseItem.aiAnalysis?.urgencyLevel || 'medium'} />
                                 </div>
 
                                 <h3 className="case-title">{caseItem.title}</h3>
@@ -153,7 +153,7 @@ export function CaseList() {
             {pagination.pages > 1 && (
                 <div className="pagination">
                     <Button
-                        variant="outline"
+                        variant="secondary"
                         size="sm"
                         disabled={pagination.page === 1}
                         onClick={() => setPagination(p => ({ ...p, page: p.page - 1 }))}
@@ -164,7 +164,7 @@ export function CaseList() {
                         Page {pagination.page} of {pagination.pages}
                     </span>
                     <Button
-                        variant="outline"
+                        variant="secondary"
                         size="sm"
                         disabled={pagination.page === pagination.pages}
                         onClick={() => setPagination(p => ({ ...p, page: p.page + 1 }))}
