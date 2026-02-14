@@ -20,7 +20,9 @@ import documentRoutes from './routes/documents.js';
 dotenv.config();
 
 // Connect to database
+// Connect to database (MongoDB - Primary, Firebase - Parallel)
 connectDB();
+import './config/firebase.js'; // Initialize Firebase Admin
 
 const app = express();
 
