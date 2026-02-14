@@ -1,65 +1,131 @@
-# 🔥 Adding Firebase to Nexora
+# 🔥 Firebase Setup Guide for Nexora Legal Platform
 
-This guide explains how to set up Firebase (Firestore Database & Authentication) for the Nexora project.
+## Overview
+This application uses **Firebase Firestore** as its primary database and **Firebase Admin SDK** on the server for secure data operations.
 
-## 1. Create a Firebase Project
-1.  Go to the [Firebase Console](https://console.firebase.google.com/).
-2.  Click **"Add project"** and follow the setup wizard.
-3.  Disable Google Analytics (optional, simplifies setup).
+---
 
-## 2. Get Configuration Credentials
+## 1. Create Firebase Project
 
-### A. Client Configuration (For Frontend)
-1.  In your Firebase Project Overview, click the **Web icon (</>)** to add a web app.
-2.  Register the app (e.g., "Nexora Client").
-3.  Copy the `firebaseConfig` object shown. You'll need these values for your `.env` file.
+1. Go to [Firebase Console](https://console.firebase.google.com/)
+2. Click "Add project" → Enter project name → Continue
+3. Enable/Disable Google Analytics (optional) → Create Project
 
-### B. Server Configuration (For Backend Admin SDK)
-1.  Go to **Project Settings** (gear icon) -> **Service accounts**.
-2.  Click **"Generate new private key"**.
-3.  This will download a JSON file. **KEEP THIS SECURE!**
-4.  Open the file and copy the contents. You will need to convert this to environment variables.
+## 2. Enable Firestore Database
 
-## 3. Configure Environment Variables
+1. In Firebase Console → Build → **Firestore Database**
+2. Click "Create database"
+3. Start in **test mode** (or production mode with proper rules)
+4. Select a region → Click Enable
 
-### Client (`client/.env`)
-Add these variables using the values from Step 2A:
+## 3. Generate Service Account Key
+
+1. Go to **Project Settings** (gear icon) → **Service Accounts**
+2. Click **"Generate new private key"**
+3. Download the JSON file (keep it secure!)
+
+## 4. Set Environment Variables
+
+### Option A: Full JSON (Recommended for Vercel/Production)
+
+In your `.env` file or hosting platform, set:
+
 ```env
-VITE_FIREBASE_API_KEY=your_api_key
-VITE_FIREBASE_AUTH_DOMAIN=your_project_id.firebaseapp.com
-VITE_FIREBASE_PROJECT_ID=your_project_id
-VITE_FIREBASE_STORAGE_BUCKET=your_project_id.appspot.com
-VITE_FIREBASE_MESSAGING_SENDER_ID=your_messaging_sender_id
-VITE_FIREBASE_APP_ID=your_app_id
+FIREBASE_SERVICE_ACCOUNT_JSON={"type":"service_account","project_id":"your-project-id","private_key_id":"...","private_key":"-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n","client_email":"firebase-adminsdk@your-project.iam.gserviceaccount.com","client_id":"...","auth_uri":"...","token_uri":"...","auth_provider_x509_cert_url":"...","client_x509_cert_url":"..."}
 ```
 
-### Server (`server/.env`)
-Add the service account details from Step 2B. Since most hosting platforms (like Vercel) prefer single-line variables, you can either stringify the JSON or add fields individually. For local development, individual fields are clearer:
+### Option B: Individual Variables (Alternative)
+
 ```env
-FIREBASE_PROJECT_ID=your_project_id
-FIREBASE_CLIENT_EMAIL=your_client_email
-FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nYour Private Key Here\n-----END PRIVATE KEY-----\n"
+FIREBASE_PROJECT_ID=your-project-id
+FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+FIREBASE_CLIENT_EMAIL=firebase-adminsdk@your-project.iam.gserviceaccount.com
+FIREBASE_DATABASE_URL=https://your-project.firebaseio.com
 ```
-*Note: Ensure the private key is wrapped in quotes and `\n` characters are preserved.*
 
-## 4. Install Dependencies
-You need to install the Firebase SDKs locally.
+### Other Required Variables
 
-**Server:**
+```env
+JWT_SECRET=your-secure-jwt-secret-here
+DEEPSEEK_API_KEY=your-deepseek-api-key
+NODE_ENV=development
+PORT=5000
+CLIENT_URL=http://localhost:5173
+```
+
+## 5. Client-Side Firebase (Optional)
+
+If you need client-side Firebase features, set these in the client `.env`:
+
+```env
+VITE_FIREBASE_API_KEY=your-api-key
+VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your-project-id
+VITE_FIREBASE_STORAGE_BUCKET=your-project.appspot.com
+VITE_FIREBASE_MESSAGING_SENDER_ID=your-sender-id
+VITE_FIREBASE_APP_ID=your-app-id
+```
+
+## 6. Seed the Database
+
+After setting up Firebase credentials:
+
 ```bash
 cd server
-npm install firebase-admin
+npm run seed
 ```
 
-**Client:**
+This will populate Firestore with demo data including:
+- 8 users (1 admin, 3 clients, 4 advocates)
+- 4 advocate profiles
+- 7 legal cases
+- Notifications, complaints, reviews, and more
+
+### Demo Login Credentials
+All accounts use password: `password123`
+
+| Role | Email |
+|------|-------|
+| Admin | admin@nexora.com |
+| Client 1 | client@nexora.com |
+| Client 2 | client2@nexora.com |
+| Client 3 | client3@nexora.com |
+| Advocate 1 | advocate@nexora.com |
+| Advocate 2 | advocate2@nexora.com |
+| Advocate 3 | advocate3@nexora.com |
+| Advocate 4 | advocate4@nexora.com *(pending)* |
+
+## 7. Run the Application
+
 ```bash
+# Server
+cd server
+npm run dev
+
+# Client (in a separate terminal)
 cd client
-npm install firebase
+npm run dev
 ```
 
-## 5. Verify Integration
-The project now includes configuration files at:
-- `server/config/firebase.js`: Initializes Firebase Admin SDK.
-- `client/src/firebase.ts`: Initializes Firebase Client SDK.
+## Firestore Collections Structure
 
-You can import `db` (Firestore), `auth`, or `storage` from these files to start using Firebase services alongside your existing MongoDB data.
+| Collection | Description |
+|-----------|-------------|
+| `users` | All user accounts (clients, advocates, admins) |
+| `advocates` | Advocate profiles linked to users |
+| `cases` | Legal cases filed by clients |
+| `notifications` | User notifications |
+| `complaints` | User complaints |
+| `aiLogs` | AI interaction logs |
+| `activityLogs` | User activity audit trail |
+| `adminLogs` | Admin action logs |
+| `reviews` | Advocate reviews |
+| `systemSettings` | Platform configuration |
+| `documents` | Uploaded documents metadata |
+
+## Security Notes
+
+- **Never commit** the service account JSON file to version control
+- Add `*.json` service account files to `.gitignore`
+- Use environment variables for all sensitive data
+- The Firebase Admin SDK bypasses Firestore security rules (server-side only)

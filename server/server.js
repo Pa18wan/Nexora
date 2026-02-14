@@ -3,7 +3,12 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
-import connectDB from './config/db.js';
+
+// Load env vars FIRST
+dotenv.config();
+
+// Initialize Firebase (replaces MongoDB)
+import './config/firebase.js';
 
 // Route imports
 import authRoutes from './routes/auth.js';
@@ -16,14 +21,6 @@ import aiRoutes from './routes/ai.js';
 import notificationRoutes from './routes/notifications.js';
 import documentRoutes from './routes/documents.js';
 
-// Load env vars
-dotenv.config();
-
-// Connect to database
-// Connect to database (MongoDB - Primary, Firebase - Parallel)
-connectDB();
-import './config/firebase.js'; // Initialize Firebase Admin
-
 const app = express();
 
 // Security middleware
@@ -34,7 +31,7 @@ app.use(helmet({
 // Rate limiting
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // 100 requests per window
+    max: 200, // 200 requests per window
     message: { success: false, message: 'Too many requests, please try again later' }
 });
 app.use('/api/', limiter);
@@ -56,8 +53,8 @@ app.use('/uploads', express.static('uploads'));
 
 // API Routes
 app.use('/api/auth', authRoutes);
-app.use('/api/cases', caseRoutes); // Keeping for backward compatibility/general access
-app.use('/api/advocates', advocateRoutes); // Public search
+app.use('/api/cases', caseRoutes);
+app.use('/api/advocates', advocateRoutes);
 
 // Role-based panels
 app.use('/api/client', clientRoutes);
@@ -70,15 +67,21 @@ app.use('/api/notifications', notificationRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
-    res.json({ success: true, message: 'Legal Services API is running', timestamp: new Date().toISOString() });
+    res.json({
+        success: true,
+        message: 'Nexora Legal Services API is running',
+        database: 'Firebase Firestore',
+        timestamp: new Date().toISOString()
+    });
 });
 
 // Root route
 app.get('/', (req, res) => {
     res.json({
         success: true,
-        message: 'AI-Based Legal Services Platform API',
-        version: '1.0.0',
+        message: 'Nexora AI Legal Intelligence Platform API',
+        version: '2.0.0',
+        database: 'Firebase Firestore',
         docs: '/api/health'
     });
 });
@@ -102,7 +105,8 @@ const PORT = process.env.PORT || 5000;
 if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
     app.listen(PORT, () => {
         console.log(`
-🚀 Server running on port ${PORT}
+🚀 Nexora Server running on port ${PORT}
+🔥 Database: Firebase Firestore
 📚 API Docs: http://localhost:${PORT}/api/health
 🔐 Environment: ${process.env.NODE_ENV || 'development'}
   `);

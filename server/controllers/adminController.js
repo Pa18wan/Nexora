@@ -1,39 +1,39 @@
-import User from '../models/User.js';
-import Advocate from '../models/Advocate.js';
-import Case from '../models/Case.js';
-import Complaint from '../models/Complaint.js';
-import AILog from '../models/AILog.js';
-import AdminLog from '../models/AdminLog.js';
-import SystemSettings from '../models/SystemSettings.js';
-import ActivityLog from '../models/ActivityLog.js';
+import { db, generateId, queryToArray, docToObj } from '../config/firebase.js';
 
 /**
  * Get admin dashboard statistics
  */
 export const getAdminDashboard = async (req, res) => {
     try {
-        const [totalUsers, activeAdvocates, totalCases, urgentCases, pendingVerifications] = await Promise.all([
-            User.countDocuments({ role: 'client' }),
-            Advocate.countDocuments({ isVerified: true, isActive: true }),
-            Case.countDocuments(),
-            Case.countDocuments({ urgencyLevel: { $in: ['critical', 'high'] } }),
-            Advocate.countDocuments({ isVerified: false })
-        ]);
+        // Count clients
+        const clientsSnap = await db.collection('users').where('role', '==', 'client').get();
+        const totalUsers = clientsSnap.size;
 
-        const recentActivity = await ActivityLog.find()
-            .sort({ createdAt: -1 })
+        // Count active advocates
+        const activeAdvSnap = await db.collection('advocates')
+            .where('isVerified', '==', true)
+            .where('isActive', '==', true)
+            .get();
+        const activeAdvocates = activeAdvSnap.size;
+
+        // Count cases
+        const casesSnap = await db.collection('cases').get();
+        const allCases = queryToArray(casesSnap);
+        const totalCases = allCases.length;
+        const urgentCases = allCases.filter(c => ['critical', 'high'].includes(c.urgencyLevel)).length;
+
+        // Pending verifications
+        const pendingSnap = await db.collection('advocates')
+            .where('isVerified', '==', false)
+            .get();
+        const pendingVerifications = pendingSnap.size;
+
+        // Recent activity
+        const activitySnap = await db.collection('activityLogs')
+            .orderBy('createdAt', 'desc')
             .limit(10)
-            .populate('userId', 'name role');
-
-        const aiStats = await AILog.aggregate([
-            {
-                $group: {
-                    _id: '$type',
-                    count: { $sum: 1 },
-                    avgTokens: { $avg: '$tokensUsed' }
-                }
-            }
-        ]);
+            .get();
+        const recentActivity = queryToArray(activitySnap);
 
         res.json({
             success: true,
@@ -46,7 +46,7 @@ export const getAdminDashboard = async (req, res) => {
                     pendingVerifications
                 },
                 recentActivity,
-                aiStats
+                aiStats: []
             }
         });
 
@@ -62,24 +62,42 @@ export const getAdminDashboard = async (req, res) => {
 export const getUsers = async (req, res) => {
     try {
         const { role, status, search, page = 1, limit = 10 } = req.query;
-        const query = {};
 
-        if (role) query.role = role;
-        if (status) query.isVerified = status === 'verified';
-        if (search) {
-            query.$or = [
-                { name: { $regex: search, $options: 'i' } },
-                { email: { $regex: search, $options: 'i' } }
-            ];
+        let query = db.collection('users');
+        if (role) {
+            query = query.where('role', '==', role);
         }
 
-        const users = await User.find(query)
-            .sort({ createdAt: -1 })
-            .skip((page - 1) * limit)
-            .limit(parseInt(limit))
-            .select('-password');
+        const usersSnap = await query.get();
+        let users = queryToArray(usersSnap);
 
-        const total = await User.countDocuments(query);
+        // Filter by status
+        if (status) {
+            const isVerified = status === 'verified';
+            users = users.filter(u => u.isVerified === isVerified);
+        }
+
+        // Filter by search
+        if (search) {
+            const searchLower = search.toLowerCase();
+            users = users.filter(u =>
+                (u.name && u.name.toLowerCase().includes(searchLower)) ||
+                (u.email && u.email.toLowerCase().includes(searchLower))
+            );
+        }
+
+        // Remove passwords
+        users = users.map(u => {
+            const { password, ...rest } = u;
+            return rest;
+        });
+
+        // Sort by createdAt desc
+        users.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+
+        const total = users.length;
+        const startIndex = (parseInt(page) - 1) * parseInt(limit);
+        users = users.slice(startIndex, startIndex + parseInt(limit));
 
         res.json({
             success: true,
@@ -87,7 +105,7 @@ export const getUsers = async (req, res) => {
                 users,
                 pagination: {
                     currentPage: parseInt(page),
-                    totalPages: Math.ceil(total / limit),
+                    totalPages: Math.ceil(total / parseInt(limit)),
                     total
                 }
             }
@@ -108,37 +126,40 @@ export const updateUserStatus = async (req, res) => {
         const { action, reason } = req.body;
         const adminId = req.user._id;
 
-        const user = await User.findById(userId);
-        if (!user) {
+        const userDoc = await db.collection('users').doc(userId).get();
+        if (!userDoc.exists) {
             return res.status(404).json({ success: false, error: 'User not found' });
         }
 
         let update = {};
         if (action === 'suspend') {
-            update = { isVerified: false }; // Temporary Example logic
+            update = { isVerified: false };
         } else if (action === 'block') {
-            update = { isBlocked: true }; // Assuming isBlocked field exists or adding it
+            update = { isActive: false };
         } else if (action === 'activate') {
-            update = { isVerified: true, isBlocked: false };
+            update = { isVerified: true, isActive: true };
         }
 
-        const updatedUser = await User.findByIdAndUpdate(userId, update, { new: true });
+        update.updatedAt = new Date().toISOString();
+        await db.collection('users').doc(userId).update(update);
 
         // Log admin action
-        await AdminLog.create({
+        await db.collection('adminLogs').doc(generateId()).set({
             adminId,
             action: `user_${action}`,
             targetType: 'user',
             targetId: userId,
             reason,
-            previousState: { isVerified: user.isVerified }, // simplistic prev state
-            newState: update
+            createdAt: new Date().toISOString()
         });
+
+        const updatedDoc = await db.collection('users').doc(userId).get();
+        const { password, ...updatedUser } = updatedDoc.data();
 
         res.json({
             success: true,
             message: `User ${action}ed successfully`,
-            data: { user: updatedUser }
+            data: { user: { _id: userId, ...updatedUser } }
         });
 
     } catch (error) {
@@ -152,9 +173,22 @@ export const updateUserStatus = async (req, res) => {
  */
 export const getPendingAdvocates = async (req, res) => {
     try {
-        const advocates = await Advocate.find({ isVerified: false })
-            .populate('userId', 'name email phone createdAt')
-            .sort({ createdAt: 1 });
+        const advSnap = await db.collection('advocates')
+            .where('isVerified', '==', false)
+            .get();
+
+        let advocates = queryToArray(advSnap);
+
+        // Enrich with user data
+        for (let adv of advocates) {
+            if (adv.userId) {
+                const uDoc = await db.collection('users').doc(adv.userId).get();
+                if (uDoc.exists) {
+                    const { password, ...userData } = uDoc.data();
+                    adv.user = { _id: adv.userId, ...userData };
+                }
+            }
+        }
 
         res.json({
             success: true,
@@ -173,37 +207,29 @@ export const getPendingAdvocates = async (req, res) => {
 export const verifyAdvocate = async (req, res) => {
     try {
         const { advocateId } = req.params;
-        const { action, reason } = req.body; // action: 'approve' or 'reject'
+        const { action, reason } = req.body;
         const adminId = req.user._id;
 
-        const advocate = await Advocate.findById(advocateId);
-        if (!advocate) {
+        const advDoc = await db.collection('advocates').doc(advocateId).get();
+        if (!advDoc.exists) {
             return res.status(404).json({ success: false, error: 'Advocate not found' });
         }
 
         if (action === 'approve') {
-            advocate.isVerified = true;
-            await advocate.save();
-
-            // Log action
-            await AdminLog.create({
-                adminId,
-                action: 'advocate_approve',
-                targetType: 'advocate',
-                targetId: advocateId
-            });
-
-        } else if (action === 'reject') {
-            // Ideally notify user and maybe delete advocate profile or mark as rejected
-            // For now, let's just log it. Real implementation might differ.
-            await AdminLog.create({
-                adminId,
-                action: 'advocate_reject',
-                targetType: 'advocate',
-                targetId: advocateId,
-                reason
+            await db.collection('advocates').doc(advocateId).update({
+                isVerified: true,
+                updatedAt: new Date().toISOString()
             });
         }
+
+        await db.collection('adminLogs').doc(generateId()).set({
+            adminId,
+            action: action === 'approve' ? 'advocate_approve' : 'advocate_reject',
+            targetType: 'advocate',
+            targetId: advocateId,
+            reason: reason || '',
+            createdAt: new Date().toISOString()
+        });
 
         res.json({
             success: true,
@@ -221,11 +247,10 @@ export const verifyAdvocate = async (req, res) => {
  */
 export const getSystemSettings = async (req, res) => {
     try {
-        const settings = await SystemSettings.find();
-        res.json({
-            success: true,
-            data: { settings }
-        });
+        const settingsSnap = await db.collection('systemSettings').get();
+        const settings = queryToArray(settingsSnap);
+
+        res.json({ success: true, data: { settings } });
     } catch (error) {
         console.error('Get system settings error:', error);
         res.status(500).json({ success: false, error: 'Failed to fetch settings' });
@@ -237,32 +262,41 @@ export const getSystemSettings = async (req, res) => {
  */
 export const updateSystemSettings = async (req, res) => {
     try {
-        const { updates } = req.body; // Array of { key, value }
+        const { updates } = req.body;
         const adminId = req.user._id;
 
         for (const update of updates) {
-            await SystemSettings.findOneAndUpdate(
-                { key: update.key },
-                {
+            // Find by key
+            const snap = await db.collection('systemSettings')
+                .where('key', '==', update.key)
+                .limit(1).get();
+
+            if (snap.empty) {
+                await db.collection('systemSettings').doc(generateId()).set({
+                    key: update.key,
                     value: update.value,
-                    lastUpdatedBy: adminId
-                },
-                { upsert: true }
-            );
+                    lastUpdatedBy: adminId,
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
+                });
+            } else {
+                await db.collection('systemSettings').doc(snap.docs[0].id).update({
+                    value: update.value,
+                    lastUpdatedBy: adminId,
+                    updatedAt: new Date().toISOString()
+                });
+            }
         }
 
-        await AdminLog.create({
+        await db.collection('adminLogs').doc(generateId()).set({
             adminId,
             action: 'settings_update',
             targetType: 'settings',
-            targetId: adminId, // Using admin ID as simple reference
-            newState: updates
+            targetId: adminId,
+            createdAt: new Date().toISOString()
         });
 
-        res.json({
-            success: true,
-            message: 'Settings updated successfully'
-        });
+        res.json({ success: true, message: 'Settings updated successfully' });
 
     } catch (error) {
         console.error('Update system settings error:', error);
@@ -276,23 +310,30 @@ export const updateSystemSettings = async (req, res) => {
 export const getComplaints = async (req, res) => {
     try {
         const { status, type, page = 1, limit = 10 } = req.query;
-        const query = {};
 
-        if (status) query.status = status;
-        if (type) query.type = type;
+        const complaintsSnap = await db.collection('complaints')
+            .orderBy('createdAt', 'desc')
+            .get();
 
-        const complaints = await Complaint.find(query)
-            .sort({ createdAt: -1 })
-            .skip((page - 1) * limit)
-            .limit(parseInt(limit))
-            .populate('raisedBy', 'name email role')
-            .populate({
-                path: 'againstAdvocate',
-                populate: { path: 'userId', select: 'name email' }
-            })
-            .populate('caseId', 'title caseNumber');
+        let complaints = queryToArray(complaintsSnap);
 
-        const total = await Complaint.countDocuments(query);
+        if (status) complaints = complaints.filter(c => c.status === status);
+        if (type) complaints = complaints.filter(c => c.type === type);
+
+        const total = complaints.length;
+        const startIndex = (parseInt(page) - 1) * parseInt(limit);
+        complaints = complaints.slice(startIndex, startIndex + parseInt(limit));
+
+        // Enrich with user info
+        for (let c of complaints) {
+            if (c.raisedBy) {
+                const uDoc = await db.collection('users').doc(c.raisedBy).get();
+                if (uDoc.exists) {
+                    const { password, ...userData } = uDoc.data();
+                    c.raisedByUser = { _id: c.raisedBy, ...userData };
+                }
+            }
+        }
 
         res.json({
             success: true,
@@ -300,7 +341,7 @@ export const getComplaints = async (req, res) => {
                 complaints,
                 pagination: {
                     currentPage: parseInt(page),
-                    totalPages: Math.ceil(total / limit),
+                    totalPages: Math.ceil(total / parseInt(limit)),
                     total
                 }
             }
@@ -317,32 +358,34 @@ export const getComplaints = async (req, res) => {
 export const resolveComplaint = async (req, res) => {
     try {
         const { complaintId } = req.params;
-        const { action, notes } = req.body; // action: resolved, dismissed
+        const { action, notes } = req.body;
         const adminId = req.user._id;
 
-        const complaint = await Complaint.findById(complaintId);
-        if (!complaint) {
+        const complaintDoc = await db.collection('complaints').doc(complaintId).get();
+        if (!complaintDoc.exists) {
             return res.status(404).json({ success: false, error: 'Complaint not found' });
         }
 
-        complaint.status = action;
-        complaint.resolutionNotes = notes;
-        complaint.resolvedBy = adminId;
-        complaint.resolvedAt = Date.now();
-        await complaint.save();
+        await db.collection('complaints').doc(complaintId).update({
+            status: action,
+            resolutionNotes: notes,
+            resolvedBy: adminId,
+            resolvedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+        });
 
-        await AdminLog.create({
+        await db.collection('adminLogs').doc(generateId()).set({
             adminId,
             action: `complaint_${action}`,
             targetType: 'complaint',
             targetId: complaintId,
-            reason: notes
+            reason: notes,
+            createdAt: new Date().toISOString()
         });
 
         res.json({
             success: true,
-            message: `Complaint ${action} successfully`,
-            data: { complaint }
+            message: `Complaint ${action} successfully`
         });
 
     } catch (error) {

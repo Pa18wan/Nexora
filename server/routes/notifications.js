@@ -1,5 +1,5 @@
 import express from 'express';
-import Notification from '../models/Notification.js';
+import { db, generateId, queryToArray } from '../config/firebase.js';
 import { protect } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -8,25 +8,40 @@ const router = express.Router();
 router.get('/', protect, async (req, res) => {
     try {
         const { page = 1, limit = 20, unreadOnly } = req.query;
-        const query = { userId: req.user._id };
 
-        if (unreadOnly === 'true') query.isRead = false;
+        let allNotifs = [];
 
-        const notifications = await Notification.find(query)
-            .populate('relatedCase', 'title caseNumber')
-            .sort({ createdAt: -1 })
-            .skip((page - 1) * limit)
-            .limit(parseInt(limit));
+        if (unreadOnly === 'true') {
+            const snap = await db.collection('notifications')
+                .where('userId', '==', req.user._id)
+                .where('isRead', '==', false)
+                .orderBy('createdAt', 'desc')
+                .get();
+            allNotifs = queryToArray(snap);
+        } else {
+            const snap = await db.collection('notifications')
+                .where('userId', '==', req.user._id)
+                .orderBy('createdAt', 'desc')
+                .get();
+            allNotifs = queryToArray(snap);
+        }
 
-        const total = await Notification.countDocuments(query);
-        const unreadCount = await Notification.countDocuments({ userId: req.user._id, isRead: false });
+        const unreadSnap = await db.collection('notifications')
+            .where('userId', '==', req.user._id)
+            .where('isRead', '==', false)
+            .get();
+        const unreadCount = unreadSnap.size;
+
+        const total = allNotifs.length;
+        const startIndex = (parseInt(page) - 1) * parseInt(limit);
+        const notifications = allNotifs.slice(startIndex, startIndex + parseInt(limit));
 
         res.json({
             success: true,
             data: {
                 notifications,
                 unreadCount,
-                pagination: { page: parseInt(page), limit: parseInt(limit), total, pages: Math.ceil(total / limit) }
+                pagination: { page: parseInt(page), limit: parseInt(limit), total, pages: Math.ceil(total / parseInt(limit)) }
             }
         });
     } catch (error) {
@@ -38,17 +53,17 @@ router.get('/', protect, async (req, res) => {
 // Mark notification as read
 router.put('/:id/read', protect, async (req, res) => {
     try {
-        const notification = await Notification.findOneAndUpdate(
-            { _id: req.params.id, userId: req.user._id },
-            { isRead: true, readAt: new Date() },
-            { new: true }
-        );
-
-        if (!notification) {
+        const notifDoc = await db.collection('notifications').doc(req.params.id).get();
+        if (!notifDoc.exists || notifDoc.data().userId !== req.user._id) {
             return res.status(404).json({ success: false, message: 'Notification not found' });
         }
 
-        res.json({ success: true, data: notification });
+        await db.collection('notifications').doc(req.params.id).update({
+            isRead: true,
+            readAt: new Date().toISOString()
+        });
+
+        res.json({ success: true, data: { _id: req.params.id, ...notifDoc.data(), isRead: true } });
     } catch (error) {
         console.error('Mark read error:', error);
         res.status(500).json({ success: false, message: 'Failed to update notification' });
@@ -58,10 +73,16 @@ router.put('/:id/read', protect, async (req, res) => {
 // Mark all as read
 router.put('/read-all', protect, async (req, res) => {
     try {
-        await Notification.updateMany(
-            { userId: req.user._id, isRead: false },
-            { isRead: true, readAt: new Date() }
-        );
+        const unreadSnap = await db.collection('notifications')
+            .where('userId', '==', req.user._id)
+            .where('isRead', '==', false)
+            .get();
+
+        const batch = db.batch();
+        unreadSnap.docs.forEach(doc => {
+            batch.update(doc.ref, { isRead: true, readAt: new Date().toISOString() });
+        });
+        await batch.commit();
 
         res.json({ success: true, message: 'All notifications marked as read' });
     } catch (error) {

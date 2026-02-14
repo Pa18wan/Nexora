@@ -1,9 +1,8 @@
 import deepseekService from '../services/deepseek.js';
-import AILog from '../models/AILog.js';
-import Case from '../models/Case.js';
+import { db, generateId, queryToArray } from '../config/firebase.js';
 
 /**
- * Handle AI Chat
+ * Handle AI Chat - Enhanced with situational suggestions
  */
 export const chat = async (req, res) => {
     try {
@@ -13,33 +12,41 @@ export const chat = async (req, res) => {
         let caseContext = null;
 
         if (caseId) {
-            const caseData = await Case.findById(caseId);
-            if (caseData && (caseData.clientId.equals(userId) || (caseData.advocateId && caseData.advocateId.userId.equals(userId)))) {
-                caseContext = {
-                    title: caseData.title,
-                    description: caseData.description,
-                    category: caseData.category,
-                    status: caseData.status
-                };
+            const caseDoc = await db.collection('cases').doc(caseId).get();
+            if (caseDoc.exists) {
+                const caseData = caseDoc.data();
+                if (caseData.clientId === userId) {
+                    caseContext = {
+                        title: caseData.title,
+                        description: caseData.description,
+                        category: caseData.category,
+                        status: caseData.status,
+                        urgencyLevel: caseData.urgencyLevel,
+                        aiAnalysis: caseData.aiAnalysis
+                    };
+                }
             }
         }
 
-        // Get recent conversation history
-        const recentLogs = await AILog.find({ userId })
-            .sort({ createdAt: -1 })
-            .limit(5);
+        // Get recent conversation history from Firestore
+        const recentLogsSnap = await db.collection('aiLogs')
+            .where('userId', '==', userId)
+            .orderBy('createdAt', 'desc')
+            .limit(5)
+            .get();
+
+        const recentLogs = queryToArray(recentLogsSnap);
 
         const conversationHistory = recentLogs.flatMap(log => {
-            // Basic structure assumption
             return [
                 { role: 'user', content: String(log.input) },
-                { role: 'assistant', content: String(log.output && log.output.data && log.output.data.response || log.output) }
+                { role: 'assistant', content: String(log.output || '') }
             ];
         }).reverse();
 
         const result = await deepseekService.legalChat(message, caseContext, conversationHistory);
 
-        // Log interaction
+        // Log interaction to Firestore
         await deepseekService.logInteraction(userId, 'chat', message, result.data ? result.data.response : 'No response', caseId);
 
         if (!result.success) {
@@ -65,15 +72,21 @@ export const getLogs = async (req, res) => {
         const userId = req.user._id;
         const { page = 1, limit = 20 } = req.query;
 
-        // Admin can see all, users see their own
-        const query = req.user.role === 'admin' ? {} : { userId };
+        let query;
+        if (req.user.role === 'admin') {
+            query = db.collection('aiLogs').orderBy('createdAt', 'desc');
+        } else {
+            query = db.collection('aiLogs')
+                .where('userId', '==', userId)
+                .orderBy('createdAt', 'desc');
+        }
 
-        const logs = await AILog.find(query)
-            .sort({ createdAt: -1 })
-            .skip((page - 1) * limit)
-            .limit(parseInt(limit));
+        const logsSnap = await query.get();
+        let logs = queryToArray(logsSnap);
 
-        const total = await AILog.countDocuments(query);
+        const total = logs.length;
+        const startIndex = (parseInt(page) - 1) * parseInt(limit);
+        logs = logs.slice(startIndex, startIndex + parseInt(limit));
 
         res.json({
             success: true,
@@ -81,7 +94,7 @@ export const getLogs = async (req, res) => {
                 logs,
                 pagination: {
                     currentPage: parseInt(page),
-                    totalPages: Math.ceil(total / limit),
+                    totalPages: Math.ceil(total / parseInt(limit)),
                     total
                 }
             }

@@ -1,10 +1,7 @@
 import express from 'express';
-import Case from '../models/Case.js';
-import Advocate from '../models/Advocate.js';
-import AILog from '../models/AILog.js';
-import Notification from '../models/Notification.js';
+import { db, generateId, queryToArray, docToObj } from '../config/firebase.js';
 import { protect, authorize } from '../middleware/auth.js';
-import { analyzeCase, matchAdvocates } from '../config/deepseek.js';
+import deepseekService from '../services/deepseek.js';
 
 const router = express.Router();
 
@@ -17,61 +14,71 @@ router.post('/', protect, authorize('client'), async (req, res) => {
             return res.status(400).json({ success: false, message: 'Please provide title, description, and category' });
         }
 
-        const newCase = await Case.create({
+        const caseId = generateId();
+        const now = new Date().toISOString();
+
+        const newCase = {
             clientId: req.user._id,
-            title, description, category, location, clientNotes,
+            title, description, category,
+            location: location || {},
+            clientNotes: clientNotes || '',
             status: 'analyzing',
-            timeline: [{ event: 'Case Submitted', description: 'Case was submitted for AI analysis', createdBy: req.user._id }]
-        });
+            urgencyLevel: 'medium',
+            aiAnalysis: {},
+            recommendedAdvocates: [],
+            timeline: [{ event: 'Case Submitted', description: 'Case was submitted for AI analysis', createdBy: req.user._id, createdAt: now }],
+            createdAt: now,
+            updatedAt: now
+        };
 
-        const startTime = Date.now();
-        const aiAnalysis = await analyzeCase({ title, description, category });
-        const latencyMs = Date.now() - startTime;
+        // AI analysis
+        try {
+            const aiAnalysis = await deepseekService.classifyCase(description, { location, category });
 
-        newCase.aiAnalysis = { ...aiAnalysis, analyzedAt: new Date() };
-        newCase.status = 'pending_advocate';
-        newCase.priority = aiAnalysis.urgencyLevel === 'critical' ? 'urgent' :
-            aiAnalysis.urgencyLevel === 'high' ? 'high' : 'normal';
+            if (aiAnalysis && aiAnalysis.success && aiAnalysis.data) {
+                newCase.aiAnalysis = { ...aiAnalysis.data, analyzedAt: now };
+                newCase.urgencyLevel = aiAnalysis.data.urgencyLevel || 'medium';
 
-        newCase.timeline.push({
-            event: 'AI Analysis Complete',
-            description: `Urgency: ${aiAnalysis.urgencyLevel}, Risk Score: ${aiAnalysis.riskScore}`,
-            createdBy: req.user._id
-        });
-
-        const advocates = await Advocate.find({
-            verificationStatus: 'verified',
-            isAcceptingCases: true,
-            specialization: { $in: aiAnalysis.requiredSpecialization }
-        }).populate('userId', 'name email').limit(10);
-
-        let advocateMatches = [];
-        if (advocates.length > 0) {
-            advocateMatches = await matchAdvocates(aiAnalysis, advocates);
-            newCase.recommendedAdvocates = advocateMatches.map(match => ({
-                advocateId: match.advocateId,
-                matchScore: match.matchScore,
-                reason: match.reason
-            }));
+                newCase.timeline.push({
+                    event: 'AI Analysis Complete',
+                    description: `Urgency: ${newCase.urgencyLevel}`,
+                    createdBy: req.user._id,
+                    createdAt: now
+                });
+            }
+        } catch (e) {
+            console.warn('AI analysis failed:', e.message);
         }
 
-        await newCase.save();
+        newCase.status = 'pending_advocate';
+        await db.collection('cases').doc(caseId).set(newCase);
 
-        await AILog.create({
-            caseId: newCase._id, userId: req.user._id, type: 'case_analysis',
-            input: { title, description, category }, output: aiAnalysis, latencyMs, status: 'success'
-        });
+        // Log AI interaction
+        try {
+            await db.collection('aiLogs').doc(generateId()).set({
+                caseId, userId: req.user._id, type: 'case_analysis',
+                input: { title, description, category },
+                output: newCase.aiAnalysis,
+                status: 'success',
+                createdAt: now
+            });
+        } catch (e) { /* ignore */ }
 
-        await Notification.create({
-            userId: req.user._id, type: 'case_update', title: 'Case Analyzed',
-            message: `Your case "${title}" has been analyzed. Urgency: ${aiAnalysis.urgencyLevel}`,
-            relatedCase: newCase._id, priority: aiAnalysis.urgencyLevel === 'critical' ? 'urgent' : 'normal'
-        });
+        // Notification
+        try {
+            await db.collection('notifications').doc(generateId()).set({
+                userId: req.user._id, type: 'case_update', title: 'Case Analyzed',
+                message: `Your case "${title}" has been analyzed. Urgency: ${newCase.urgencyLevel}`,
+                relatedCase: caseId,
+                isRead: false,
+                createdAt: now
+            });
+        } catch (e) { /* ignore */ }
 
         res.status(201).json({
             success: true,
             message: 'Case submitted and analyzed successfully',
-            data: { case: newCase, analysis: aiAnalysis, recommendedAdvocates: advocateMatches.slice(0, 5) }
+            data: { case: { _id: caseId, ...newCase }, analysis: newCase.aiAnalysis }
         });
     } catch (error) {
         console.error('Case submission error:', error);
@@ -83,30 +90,48 @@ router.post('/', protect, authorize('client'), async (req, res) => {
 router.get('/', protect, async (req, res) => {
     try {
         const { status, urgency, page = 1, limit = 10 } = req.query;
-        const query = {};
+
+        let allCases = [];
 
         if (req.user.role === 'client') {
-            query.clientId = req.user._id;
+            const snap = await db.collection('cases').where('clientId', '==', req.user._id).get();
+            allCases = queryToArray(snap);
         } else if (req.user.role === 'advocate') {
-            const advocate = await Advocate.findOne({ userId: req.user._id });
-            if (advocate) query.advocateId = advocate._id;
+            const advSnap = await db.collection('advocates')
+                .where('userId', '==', req.user._id)
+                .limit(1).get();
+            if (!advSnap.empty) {
+                const snap = await db.collection('cases').where('advocateId', '==', advSnap.docs[0].id).get();
+                allCases = queryToArray(snap);
+            }
+        } else {
+            // admin
+            const snap = await db.collection('cases').get();
+            allCases = queryToArray(snap);
         }
 
-        if (status) query.status = status;
-        if (urgency) query['aiAnalysis.urgencyLevel'] = urgency;
+        if (status) allCases = allCases.filter(c => c.status === status);
+        if (urgency) allCases = allCases.filter(c => c.aiAnalysis?.urgencyLevel === urgency || c.urgencyLevel === urgency);
 
-        const cases = await Case.find(query)
-            .populate('clientId', 'name email')
-            .populate({ path: 'advocateId', populate: { path: 'userId', select: 'name email' } })
-            .sort({ createdAt: -1 })
-            .skip((page - 1) * limit)
-            .limit(parseInt(limit));
+        // Enrich with user info
+        for (let c of allCases) {
+            if (c.clientId) {
+                const uDoc = await db.collection('users').doc(c.clientId).get();
+                if (uDoc.exists) {
+                    c.clientName = uDoc.data().name;
+                    c.clientEmail = uDoc.data().email;
+                }
+            }
+        }
 
-        const total = await Case.countDocuments(query);
+        allCases.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+        const total = allCases.length;
+        const startIndex = (parseInt(page) - 1) * parseInt(limit);
+        const cases = allCases.slice(startIndex, startIndex + parseInt(limit));
 
         res.json({
             success: true,
-            data: { cases, pagination: { page: parseInt(page), limit: parseInt(limit), total, pages: Math.ceil(total / limit) } }
+            data: { cases, pagination: { page: parseInt(page), limit: parseInt(limit), total, pages: Math.ceil(total / parseInt(limit)) } }
         });
     } catch (error) {
         console.error('Get cases error:', error);
@@ -117,19 +142,48 @@ router.get('/', protect, async (req, res) => {
 // Get single case
 router.get('/:id', protect, async (req, res) => {
     try {
-        const caseData = await Case.findById(req.params.id)
-            .populate('clientId', 'name email phone')
-            .populate({ path: 'advocateId', populate: { path: 'userId', select: 'name email' } })
-            .populate({ path: 'recommendedAdvocates.advocateId', populate: { path: 'userId', select: 'name email' } })
-            .populate('timeline.createdBy', 'name');
-
-        if (!caseData) {
+        const caseDoc = await db.collection('cases').doc(req.params.id).get();
+        if (!caseDoc.exists) {
             return res.status(404).json({ success: false, message: 'Case not found' });
         }
 
-        const isClient = caseData.clientId._id.toString() === req.user._id.toString();
-        const advocate = await Advocate.findOne({ userId: req.user._id });
-        const isAssignedAdvocate = advocate && caseData.advocateId?._id.toString() === advocate._id.toString();
+        const caseData = { _id: caseDoc.id, ...caseDoc.data() };
+
+        // Enrich with client info
+        if (caseData.clientId) {
+            const clientDoc = await db.collection('users').doc(caseData.clientId).get();
+            if (clientDoc.exists) {
+                const { password, ...clientData } = clientDoc.data();
+                caseData.client = { _id: caseData.clientId, ...clientData };
+            }
+        }
+
+        // Enrich with advocate info
+        if (caseData.advocateId) {
+            const advDoc = await db.collection('advocates').doc(caseData.advocateId).get();
+            if (advDoc.exists) {
+                const advData = advDoc.data();
+                caseData.advocate = { _id: caseData.advocateId, ...advData };
+                if (advData.userId) {
+                    const advUserDoc = await db.collection('users').doc(advData.userId).get();
+                    if (advUserDoc.exists) {
+                        caseData.advocate.user = { _id: advData.userId, name: advUserDoc.data().name, email: advUserDoc.data().email };
+                    }
+                }
+            }
+        }
+
+        // Access check
+        const isClient = caseData.clientId === req.user._id;
+        let isAssignedAdvocate = false;
+        if (req.user.role === 'advocate') {
+            const advSnap = await db.collection('advocates')
+                .where('userId', '==', req.user._id)
+                .limit(1).get();
+            if (!advSnap.empty && caseData.advocateId === advSnap.docs[0].id) {
+                isAssignedAdvocate = true;
+            }
+        }
         const isAdmin = req.user.role === 'admin';
 
         if (!isClient && !isAssignedAdvocate && !isAdmin) {
@@ -147,33 +201,52 @@ router.get('/:id', protect, async (req, res) => {
 router.put('/:id/assign', protect, authorize('client'), async (req, res) => {
     try {
         const { advocateId } = req.body;
-        const caseData = await Case.findById(req.params.id);
+        const caseDoc = await db.collection('cases').doc(req.params.id).get();
 
-        if (!caseData) return res.status(404).json({ success: false, message: 'Case not found' });
-        if (caseData.clientId.toString() !== req.user._id.toString()) {
+        if (!caseDoc.exists) return res.status(404).json({ success: false, message: 'Case not found' });
+        const caseData = caseDoc.data();
+
+        if (caseData.clientId !== req.user._id) {
             return res.status(403).json({ success: false, message: 'Not authorized' });
         }
 
-        const advocate = await Advocate.findById(advocateId).populate('userId', 'name email');
-        if (!advocate) return res.status(404).json({ success: false, message: 'Advocate not found' });
+        const advDoc = await db.collection('advocates').doc(advocateId).get();
+        if (!advDoc.exists) return res.status(404).json({ success: false, message: 'Advocate not found' });
 
-        caseData.advocateId = advocateId;
-        caseData.status = 'advocate_assigned';
-        caseData.timeline.push({
+        const advData = advDoc.data();
+        let advocateName = 'Advocate';
+        if (advData.userId) {
+            const uDoc = await db.collection('users').doc(advData.userId).get();
+            if (uDoc.exists) advocateName = uDoc.data().name;
+        }
+
+        const timeline = caseData.timeline || [];
+        timeline.push({
             event: 'Advocate Assigned',
-            description: `${advocate.userId.name} has been assigned to this case`,
-            createdBy: req.user._id
+            description: `${advocateName} has been assigned to this case`,
+            createdBy: req.user._id,
+            createdAt: new Date().toISOString()
         });
 
-        await caseData.save();
-
-        await Notification.create({
-            userId: advocate.userId._id, type: 'case_update', title: 'New Case Assigned',
-            message: `You have been assigned to case: ${caseData.title}`,
-            relatedCase: caseData._id, priority: caseData.priority === 'urgent' ? 'urgent' : 'high'
+        await db.collection('cases').doc(req.params.id).update({
+            advocateId,
+            status: 'advocate_assigned',
+            timeline,
+            updatedAt: new Date().toISOString()
         });
 
-        res.json({ success: true, message: 'Advocate assigned successfully', data: caseData });
+        // Notify advocate
+        if (advData.userId) {
+            await db.collection('notifications').doc(generateId()).set({
+                userId: advData.userId, type: 'case_update', title: 'New Case Assigned',
+                message: `You have been assigned to case: ${caseData.title}`,
+                relatedCase: req.params.id,
+                isRead: false,
+                createdAt: new Date().toISOString()
+            });
+        }
+
+        res.json({ success: true, message: 'Advocate assigned successfully' });
     } catch (error) {
         console.error('Assign advocate error:', error);
         res.status(500).json({ success: false, message: 'Failed to assign advocate' });
@@ -184,31 +257,41 @@ router.put('/:id/assign', protect, authorize('client'), async (req, res) => {
 router.put('/:id/status', protect, async (req, res) => {
     try {
         const { status, notes } = req.body;
-        const caseData = await Case.findById(req.params.id);
+        const caseDoc = await db.collection('cases').doc(req.params.id).get();
 
-        if (!caseData) return res.status(404).json({ success: false, message: 'Case not found' });
+        if (!caseDoc.exists) return res.status(404).json({ success: false, message: 'Case not found' });
+        const caseData = caseDoc.data();
 
         const oldStatus = caseData.status;
-        caseData.status = status;
-
-        if (status === 'resolved' || status === 'closed') {
-            caseData.closedDate = new Date();
-        }
-
-        caseData.timeline.push({
+        const timeline = caseData.timeline || [];
+        timeline.push({
             event: 'Status Updated',
             description: `Status changed from ${oldStatus} to ${status}. ${notes || ''}`,
-            createdBy: req.user._id
+            createdBy: req.user._id,
+            createdAt: new Date().toISOString()
         });
 
-        await caseData.save();
+        const updateData = {
+            status, timeline,
+            updatedAt: new Date().toISOString()
+        };
 
-        await Notification.create({
+        if (status === 'resolved' || status === 'closed') {
+            updateData.closedDate = new Date().toISOString();
+        }
+
+        await db.collection('cases').doc(req.params.id).update(updateData);
+
+        // Notify client
+        await db.collection('notifications').doc(generateId()).set({
             userId: caseData.clientId, type: 'case_update', title: 'Case Status Updated',
-            message: `Your case status has been updated to: ${status}`, relatedCase: caseData._id
+            message: `Your case status has been updated to: ${status}`,
+            relatedCase: req.params.id,
+            isRead: false,
+            createdAt: new Date().toISOString()
         });
 
-        res.json({ success: true, message: 'Case status updated', data: caseData });
+        res.json({ success: true, message: 'Case status updated' });
     } catch (error) {
         console.error('Update status error:', error);
         res.status(500).json({ success: false, message: 'Failed to update status' });

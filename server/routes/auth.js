@@ -1,6 +1,6 @@
 import express from 'express';
-import User from '../models/User.js';
-import Advocate from '../models/Advocate.js';
+import bcrypt from 'bcryptjs';
+import { db, docToObj, queryToArray, generateId } from '../config/firebase.js';
 import { generateToken } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -10,8 +10,13 @@ router.post('/register', async (req, res) => {
     try {
         const { name, email, password, role, phone } = req.body;
 
-        const existingUser = await User.findOne({ email: email.toLowerCase() });
-        if (existingUser) {
+        // Check if user exists
+        const existingSnapshot = await db.collection('users')
+            .where('email', '==', email.toLowerCase())
+            .limit(1)
+            .get();
+
+        if (!existingSnapshot.empty) {
             return res.status(400).json({ success: false, message: 'User already exists with this email' });
         }
 
@@ -20,30 +25,60 @@ router.post('/register', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Invalid role specified' });
         }
 
-        const user = await User.create({
+        // Hash password
+        const salt = await bcrypt.genSalt(12);
+        const hashedPassword = await bcrypt.hash(password, salt);
+
+        const userId = generateId();
+        const userData = {
             name,
             email: email.toLowerCase(),
-            password,
+            password: hashedPassword,
             role: role || 'client',
-            phone
-        });
+            phone: phone || null,
+            avatar: null,
+            isVerified: false,
+            isActive: true,
+            lastLogin: null,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+        };
 
+        await db.collection('users').doc(userId).set(userData);
+
+        // If advocate, create advocate profile
         if (role === 'advocate') {
-            await Advocate.create({
-                userId: user._id,
+            const advocateId = generateId();
+            await db.collection('advocates').doc(advocateId).set({
+                userId: userId,
                 barCouncilId: req.body.barCouncilId || 'PENDING',
                 specialization: req.body.specialization || ['General Practice'],
-                experienceYears: req.body.experienceYears || 0
+                experienceYears: req.body.experienceYears || 0,
+                bio: '',
+                rating: 0,
+                totalReviews: 0,
+                successRate: 0,
+                totalCases: 0,
+                currentCaseLoad: 0,
+                isVerified: false,
+                isAvailable: true,
+                isActive: true,
+                isAcceptingCases: true,
+                feeRange: { min: 0, max: 0 },
+                location: {},
+                languages: ['English'],
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
             });
         }
 
-        const token = generateToken(user._id);
+        const token = generateToken(userId);
 
         res.status(201).json({
             success: true,
             message: 'Registration successful',
             data: {
-                user: { id: user._id, name: user.name, email: user.email, role: user.role },
+                user: { id: userId, name: userData.name, email: userData.email, role: userData.role },
                 token
             }
         });
@@ -62,9 +97,22 @@ router.post('/login', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Please provide email and password' });
         }
 
-        const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
+        // Find user by email
+        const userSnapshot = await db.collection('users')
+            .where('email', '==', email.toLowerCase())
+            .limit(1)
+            .get();
 
-        if (!user || !(await user.comparePassword(password))) {
+        if (userSnapshot.empty) {
+            return res.status(401).json({ success: false, message: 'Invalid credentials' });
+        }
+
+        const userDoc = userSnapshot.docs[0];
+        const user = { _id: userDoc.id, ...userDoc.data() };
+
+        // Compare password
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) {
             return res.status(401).json({ success: false, message: 'Invalid credentials' });
         }
 
@@ -72,15 +120,27 @@ router.post('/login', async (req, res) => {
             return res.status(401).json({ success: false, message: 'Account has been deactivated' });
         }
 
-        user.lastLogin = new Date();
-        await user.save({ validateBeforeSave: false });
+        // Update last login
+        await db.collection('users').doc(user._id).update({
+            lastLogin: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+        });
 
         const token = generateToken(user._id);
 
+        // Get advocate profile if advocate
         let advocateProfile = null;
         if (user.role === 'advocate') {
-            advocateProfile = await Advocate.findOne({ userId: user._id });
+            const advSnapshot = await db.collection('advocates')
+                .where('userId', '==', user._id)
+                .limit(1)
+                .get();
+            if (!advSnapshot.empty) {
+                advocateProfile = { _id: advSnapshot.docs[0].id, ...advSnapshot.docs[0].data() };
+            }
         }
+
+        const avatarUrl = user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=4F8CFF&color=fff`;
 
         res.json({
             success: true,
@@ -91,7 +151,7 @@ router.post('/login', async (req, res) => {
                     name: user.name,
                     email: user.email,
                     role: user.role,
-                    avatar: user.avatarUrl,
+                    avatar: avatarUrl,
                     isVerified: user.isVerified
                 },
                 advocateProfile,
@@ -114,16 +174,26 @@ router.get('/me', async (req, res) => {
 
         const jwt = await import('jsonwebtoken');
         const decoded = jwt.default.verify(token, process.env.JWT_SECRET);
-        const user = await User.findById(decoded.id);
 
-        if (!user) {
+        const userDoc = await db.collection('users').doc(decoded.id).get();
+        if (!userDoc.exists) {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
 
+        const user = { _id: userDoc.id, ...userDoc.data() };
+
         let advocateProfile = null;
         if (user.role === 'advocate') {
-            advocateProfile = await Advocate.findOne({ userId: user._id });
+            const advSnapshot = await db.collection('advocates')
+                .where('userId', '==', user._id)
+                .limit(1)
+                .get();
+            if (!advSnapshot.empty) {
+                advocateProfile = { _id: advSnapshot.docs[0].id, ...advSnapshot.docs[0].data() };
+            }
         }
+
+        const avatarUrl = user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=4F8CFF&color=fff`;
 
         res.json({
             success: true,
@@ -133,7 +203,7 @@ router.get('/me', async (req, res) => {
                     name: user.name,
                     email: user.email,
                     role: user.role,
-                    avatar: user.avatarUrl,
+                    avatar: avatarUrl,
                     isVerified: user.isVerified,
                     phone: user.phone
                 },
@@ -155,18 +225,23 @@ router.put('/me', async (req, res) => {
 
         const jwt = await import('jsonwebtoken');
         const decoded = jwt.default.verify(token, process.env.JWT_SECRET);
-        const user = await User.findById(decoded.id);
 
-        if (!user) {
+        const userDoc = await db.collection('users').doc(decoded.id).get();
+        if (!userDoc.exists) {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
 
         const { name, email, phone } = req.body;
-        if (name) user.name = name;
-        if (email) user.email = email;
-        if (phone) user.phone = phone;
+        const updates = { updatedAt: new Date().toISOString() };
+        if (name) updates.name = name;
+        if (email) updates.email = email;
+        if (phone) updates.phone = phone;
 
-        await user.save();
+        await db.collection('users').doc(decoded.id).update(updates);
+
+        const updatedDoc = await db.collection('users').doc(decoded.id).get();
+        const user = { _id: updatedDoc.id, ...updatedDoc.data() };
+        const avatarUrl = user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=4F8CFF&color=fff`;
 
         res.json({
             success: true,
@@ -177,7 +252,7 @@ router.put('/me', async (req, res) => {
                     name: user.name,
                     email: user.email,
                     role: user.role,
-                    avatar: user.avatarUrl,
+                    avatar: avatarUrl,
                     isVerified: user.isVerified,
                     phone: user.phone
                 }

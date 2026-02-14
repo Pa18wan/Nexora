@@ -1,8 +1,4 @@
-import Case from '../models/Case.js';
-import Notification from '../models/Notification.js';
-import ActivityLog from '../models/ActivityLog.js';
-import Advocate from '../models/Advocate.js';
-import SystemSettings from '../models/SystemSettings.js';
+import { db, generateId, queryToArray, docToObj } from '../config/firebase.js';
 import deepseekService from '../services/deepseek.js';
 
 /**
@@ -13,58 +9,44 @@ export const getClientDashboard = async (req, res) => {
         const clientId = req.user._id;
 
         // Get urgency threshold from settings
-        const urgencySettings = await SystemSettings.findOne({ key: 'urgencyThreshold' });
-        const urgencyThreshold = urgencySettings?.value || 70;
+        const settingsSnap = await db.collection('systemSettings')
+            .where('key', '==', 'urgencyThreshold')
+            .limit(1).get();
+        const urgencyThreshold = settingsSnap.empty ? 70 : settingsSnap.docs[0].data().value;
 
-        // Get case statistics
-        const [totalCases, activeCases, urgentCases, resolvedCases] = await Promise.all([
-            Case.countDocuments({ clientId }),
-            Case.countDocuments({ clientId, status: { $in: ['submitted', 'assigned', 'in_review', 'in_progress'] } }),
-            Case.countDocuments({
-                clientId,
-                'aiAnalysis.urgencyScore': { $gte: urgencyThreshold },
-                status: { $nin: ['completed', 'closed', 'cancelled'] }
-            }),
-            Case.countDocuments({ clientId, status: { $in: ['completed', 'closed'] } })
-        ]);
+        // Get all client cases
+        const casesSnap = await db.collection('cases')
+            .where('clientId', '==', clientId)
+            .get();
+        const allCases = queryToArray(casesSnap);
 
-        // Get recent cases
-        const recentCases = await Case.find({ clientId })
-            .sort({ updatedAt: -1 })
+        const totalCases = allCases.length;
+        const activeCases = allCases.filter(c => ['submitted', 'assigned', 'in_review', 'in_progress', 'pending_acceptance', 'pending_advocate', 'analyzing', 'advocate_assigned'].includes(c.status)).length;
+        const urgentCases = allCases.filter(c =>
+            (c.aiAnalysis?.urgencyScore >= urgencyThreshold) &&
+            !['completed', 'closed', 'cancelled'].includes(c.status)
+        ).length;
+        const resolvedCases = allCases.filter(c => ['completed', 'closed', 'resolved'].includes(c.status)).length;
+
+        // Recent cases (sorted by updatedAt desc)
+        const recentCases = allCases
+            .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''))
+            .slice(0, 5);
+
+        // Get unread notifications count
+        const notifSnap = await db.collection('notifications')
+            .where('userId', '==', clientId)
+            .where('isRead', '==', false)
+            .get();
+        const unreadNotifications = notifSnap.size;
+
+        // Recent notifications
+        const allNotifSnap = await db.collection('notifications')
+            .where('userId', '==', clientId)
+            .orderBy('createdAt', 'desc')
             .limit(5)
-            .populate('advocateId', 'name rating')
-            .select('title category status urgencyLevel aiAnalysis.aiMatchScore updatedAt');
-
-        // Get unread notifications
-        const unreadNotifications = await Notification.countDocuments({ userId: clientId, read: false });
-
-        // Get recent notifications
-        const notifications = await Notification.find({ userId: clientId })
-            .sort({ createdAt: -1 })
-            .limit(5);
-
-        // Check for inactive advocate warning
-        let advocateWarning = null;
-        const casesWithAdvocate = await Case.find({
-            clientId,
-            advocateId: { $exists: true },
-            status: { $in: ['assigned', 'in_review', 'in_progress'] }
-        }).populate('advocateId');
-
-        for (const caseItem of casesWithAdvocate) {
-            if (caseItem.advocateId && caseItem.advocateId.lastActiveAt) {
-                const hoursSinceActive = (Date.now() - caseItem.advocateId.lastActiveAt) / (1000 * 60 * 60);
-                if (hoursSinceActive > 24) {
-                    advocateWarning = {
-                        caseId: caseItem._id,
-                        caseTitle: caseItem.title,
-                        advocateName: caseItem.advocateId.name,
-                        hoursSinceActive: Math.floor(hoursSinceActive)
-                    };
-                    break;
-                }
-            }
-        }
+            .get();
+        const notifications = queryToArray(allNotifSnap);
 
         res.json({
             success: true,
@@ -78,7 +60,7 @@ export const getClientDashboard = async (req, res) => {
                 recentCases,
                 unreadNotifications,
                 notifications,
-                advocateWarning,
+                advocateWarning: null,
                 hasUrgent: urgentCases > 0
             }
         });
@@ -95,40 +77,25 @@ export const getClientDashboard = async (req, res) => {
 export const getClientCases = async (req, res) => {
     try {
         const clientId = req.user._id;
-        const { page = 1, limit = 10, status, urgency, sortBy = 'urgencyScore' } = req.query;
+        const { page = 1, limit = 10, status } = req.query;
 
-        const query = { clientId };
+        let query = db.collection('cases').where('clientId', '==', clientId);
 
         if (status) {
-            query.status = status;
+            query = query.where('status', '==', status);
         }
 
-        if (urgency) {
-            const urgencySettings = await SystemSettings.findOne({ key: 'urgencyThreshold' });
-            const threshold = urgencySettings?.value || 70;
+        const casesSnap = await query.get();
+        let cases = queryToArray(casesSnap);
 
-            if (urgency === 'high') {
-                query['aiAnalysis.urgencyScore'] = { $gte: threshold };
-            } else if (urgency === 'low') {
-                query['aiAnalysis.urgencyScore'] = { $lt: threshold };
-            }
-        }
+        // Sort by updatedAt desc
+        cases.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
 
-        // Sort by urgency first, then by updatedAt
-        const sortOptions = {};
-        if (sortBy === 'urgencyScore') {
-            sortOptions['aiAnalysis.urgencyScore'] = -1;
-        }
-        sortOptions.updatedAt = -1;
+        const totalCases = cases.length;
 
-        const cases = await Case.find(query)
-            .sort(sortOptions)
-            .skip((page - 1) * limit)
-            .limit(parseInt(limit))
-            .populate('advocateId', 'name rating specialization')
-            .select('-aiAnalysis.embedding');
-
-        const totalCases = await Case.countDocuments(query);
+        // Paginate
+        const startIndex = (parseInt(page) - 1) * parseInt(limit);
+        cases = cases.slice(startIndex, startIndex + parseInt(limit));
 
         res.json({
             success: true,
@@ -136,7 +103,7 @@ export const getClientCases = async (req, res) => {
                 cases,
                 pagination: {
                     currentPage: parseInt(page),
-                    totalPages: Math.ceil(totalCases / limit),
+                    totalPages: Math.ceil(totalCases / parseInt(limit)),
                     totalCases,
                     hasMore: page * limit < totalCases
                 }
@@ -157,108 +124,97 @@ export const submitCase = async (req, res) => {
         const clientId = req.user._id;
         const { title, description, category, location } = req.body;
 
-        console.log('Submitting case:', { title, category, descriptionLength: description?.length });
-
         if (!title || !description) {
             return res.status(400).json({ success: false, error: 'Title and description are required' });
         }
 
-        // Create case
-        const newCase = new Case({
+        const caseId = generateId();
+        const newCase = {
             clientId,
             title,
             description,
             category: category || 'Other',
             location: location || {},
             status: 'submitted',
-            urgencyLevel: 'medium'
-        });
+            urgencyLevel: 'medium',
+            aiAnalysis: {},
+            timeline: [],
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+        };
 
-        // Run AI analysis (optional - don't fail if AI is unavailable)
+        // Run AI analysis
         try {
             const [classificationResult, urgencyResult] = await Promise.all([
                 deepseekService.classifyCase(description, { location }),
                 deepseekService.detectUrgency(description, category)
             ]);
 
-            // Store AI analysis
-            if (classificationResult && classificationResult.success) {
-                newCase.aiAnalysis = newCase.aiAnalysis || {};
+            if (classificationResult?.success) {
                 newCase.aiAnalysis.classification = classificationResult.data;
-
-                // Override category if AI is confident
-                if (classificationResult.data?.confidence > 80 && classificationResult.data?.category !== category) {
+                if (classificationResult.data?.confidence > 80) {
                     newCase.aiAnalysis.suggestedCategory = classificationResult.data.category;
                 }
             }
 
-            if (urgencyResult && urgencyResult.success) {
-                newCase.aiAnalysis = newCase.aiAnalysis || {};
+            if (urgencyResult?.success) {
                 newCase.urgencyLevel = urgencyResult.data?.urgencyLevel || 'medium';
                 newCase.aiAnalysis.urgencyScore = urgencyResult.data?.urgencyScore || 50;
+                newCase.aiAnalysis.urgencyLevel = urgencyResult.data?.urgencyLevel || 'medium';
                 newCase.aiAnalysis.urgencyDetails = urgencyResult.data;
             }
 
-            // Log AI interactions (don't await - fire and forget)
+            // Log AI interactions (fire and forget)
             Promise.all([
-                deepseekService.logInteraction(clientId, 'classification', description, classificationResult, newCase._id),
-                deepseekService.logInteraction(clientId, 'urgency', description, urgencyResult, newCase._id)
+                deepseekService.logInteraction(clientId, 'classification', description, classificationResult, caseId),
+                deepseekService.logInteraction(clientId, 'urgency', description, urgencyResult, caseId)
             ]).catch(err => console.error('AI logging error:', err));
 
         } catch (aiError) {
-            console.warn('AI analysis failed, continuing without AI analysis:', aiError.message);
-            // Set default values if AI fails
-            newCase.aiAnalysis = {
-                note: 'AI analysis pending - service temporarily unavailable'
-            };
-            newCase.urgencyLevel = 'medium';
+            console.warn('AI analysis failed:', aiError.message);
+            newCase.aiAnalysis = { note: 'AI analysis pending' };
         }
 
-        console.log('Saving case...');
-        await newCase.save();
-        console.log('Case saved successfully:', newCase._id);
+        await db.collection('cases').doc(caseId).set(newCase);
 
-        // Log activity (wrap in try-catch to prevent failures)
+        // Log activity
         try {
-            await ActivityLog.create({
+            await db.collection('activityLogs').doc(generateId()).set({
                 userId: clientId,
                 action: 'case_create',
                 entityType: 'case',
-                entityId: newCase._id,
-                details: { title, category }
+                entityId: caseId,
+                details: { title, category },
+                createdAt: new Date().toISOString()
             });
-        } catch (logErr) {
-            console.error('Activity log error:', logErr.message);
-        }
+        } catch (e) { /* ignore */ }
 
-        // Create notification (wrap in try-catch to prevent failures)
+        // Create notification
         try {
-            await Notification.create({
+            await db.collection('notifications').doc(generateId()).set({
                 userId: clientId,
                 type: 'case_submitted',
                 title: 'Case Submitted Successfully',
                 message: `Your case "${title}" has been submitted and is being analyzed.`,
-                data: { caseId: newCase._id }
+                data: { caseId },
+                isRead: false,
+                createdAt: new Date().toISOString()
             });
-        } catch (notifErr) {
-            console.error('Notification error:', notifErr.message);
-        }
+        } catch (e) { /* ignore */ }
 
         res.status(201).json({
             success: true,
             data: {
-                case: newCase,
+                case: { _id: caseId, ...newCase },
                 aiAnalysis: newCase.aiAnalysis
             }
         });
 
     } catch (error) {
-        console.error('Submit case error:', error.message, error.stack);
-        res.status(500).json({ success: false, error: 'Failed to submit case', details: error.message });
+        console.error('Submit case error:', error);
+        res.status(500).json({ success: false, error: 'Failed to submit case' });
     }
 };
-
-
 
 /**
  * Get advocate recommendations for a case
@@ -268,95 +224,66 @@ export const getAdvocateRecommendations = async (req, res) => {
         const { caseId } = req.params;
         const clientId = req.user._id;
 
-        // Get case
-        const caseData = await Case.findOne({ _id: caseId, clientId });
-        if (!caseData) {
+        const caseDoc = await db.collection('cases').doc(caseId).get();
+        if (!caseDoc.exists || caseDoc.data().clientId !== clientId) {
             return res.status(404).json({ success: false, error: 'Case not found' });
         }
+        const caseData = { _id: caseDoc.id, ...caseDoc.data() };
 
-        // Get matching advocates
-        const advocates = await Advocate.find({
-            isVerified: true,
-            isActive: true,
-            isAvailable: true,
-            'location.city': caseData.location?.city || { $exists: true },
-            currentCaseLoad: { $lt: 15 } // Not overloaded
-        })
-            .populate('userId', 'name email phone')
-            .limit(10);
+        // Get available advocates
+        const advSnap = await db.collection('advocates')
+            .where('isVerified', '==', true)
+            .where('isActive', '==', true)
+            .get();
+
+        let advocates = queryToArray(advSnap);
+
+        // Enrich with user info
+        for (let adv of advocates) {
+            if (adv.userId) {
+                const uDoc = await db.collection('users').doc(adv.userId).get();
+                if (uDoc.exists) {
+                    adv.userName = uDoc.data().name;
+                    adv.userEmail = uDoc.data().email;
+                }
+            }
+        }
 
         if (advocates.length === 0) {
-            return res.json({
-                success: true,
-                data: {
-                    recommendations: [],
-                    message: 'No available advocates found matching your criteria'
-                }
-            });
+            return res.json({ success: true, data: { recommendations: [], message: 'No available advocates' } });
         }
 
-        // Run AI matching
-        const matchResult = await deepseekService.matchAdvocates(caseData, advocates);
-
-        // Log AI interaction
-        await deepseekService.logInteraction(clientId, 'matching', { caseId }, matchResult, caseId);
-
-        // Build recommendations
-        let recommendations = [];
-
-        if (matchResult.success && matchResult.data.rankings) {
-            recommendations = matchResult.data.rankings.map(ranking => {
-                const advocate = advocates[ranking.advocateIndex];
-                return {
-                    advocate: {
-                        id: advocate._id,
-                        name: advocate.userId?.name || advocate.barCouncilId,
-                        specialization: advocate.specialization,
-                        experienceYears: advocate.experienceYears,
-                        rating: advocate.rating,
-                        successRate: advocate.successRate,
-                        location: advocate.location,
-                        feeRange: advocate.feeRange
-                    },
-                    matchScore: ranking.matchScore,
-                    matchReasons: ranking.matchReasons,
-                    concerns: ranking.concerns
-                };
-            });
-        } else {
-            // Fallback: simple ranking by rating and experience
-            recommendations = advocates.map(advocate => ({
+        // Build recommendations (simple score-based)
+        const recommendations = advocates
+            .map(adv => ({
                 advocate: {
-                    id: advocate._id,
-                    name: advocate.userId?.name || advocate.barCouncilId,
-                    specialization: advocate.specialization,
-                    experienceYears: advocate.experienceYears,
-                    rating: advocate.rating,
-                    successRate: advocate.successRate,
-                    location: advocate.location,
-                    feeRange: advocate.feeRange
+                    id: adv._id,
+                    name: adv.userName || adv.barCouncilId,
+                    specialization: adv.specialization,
+                    experienceYears: adv.experienceYears,
+                    rating: adv.rating,
+                    successRate: adv.successRate,
+                    location: adv.location,
+                    feeRange: adv.feeRange
                 },
-                matchScore: Math.round((advocate.rating * 10 + advocate.successRate) / 2),
-                matchReasons: ['Available in your area', 'Verified advocate'],
+                matchScore: Math.round(((adv.rating || 3) * 10 + (adv.successRate || 70)) / 2),
+                matchReasons: ['Available', 'Verified advocate'],
                 concerns: []
-            })).sort((a, b) => b.matchScore - a.matchScore);
-        }
+            }))
+            .sort((a, b) => b.matchScore - a.matchScore)
+            .slice(0, 5);
 
         res.json({
             success: true,
             data: {
-                case: {
-                    id: caseData._id,
-                    title: caseData.title,
-                    category: caseData.category
-                },
-                recommendations: recommendations.slice(0, 5),
+                case: { id: caseData._id, title: caseData.title, category: caseData.category },
+                recommendations,
                 totalAvailable: advocates.length
             }
         });
 
     } catch (error) {
-        console.error('Get advocate recommendations error:', error);
+        console.error('Get recommendations error:', error);
         res.status(500).json({ success: false, error: 'Failed to get recommendations' });
     }
 };
@@ -370,49 +297,44 @@ export const hireAdvocate = async (req, res) => {
         const { advocateId } = req.body;
         const clientId = req.user._id;
 
-        // Validate case ownership
-        const caseData = await Case.findOne({ _id: caseId, clientId });
-        if (!caseData) {
+        const caseDoc = await db.collection('cases').doc(caseId).get();
+        if (!caseDoc.exists || caseDoc.data().clientId !== clientId) {
             return res.status(404).json({ success: false, error: 'Case not found' });
         }
 
+        const caseData = caseDoc.data();
         if (caseData.advocateId) {
             return res.status(400).json({ success: false, error: 'Case already has an assigned advocate' });
         }
 
-        // Validate advocate
-        const advocate = await Advocate.findById(advocateId);
-        if (!advocate || !advocate.isVerified || !advocate.isAvailable) {
+        const advDoc = await db.collection('advocates').doc(advocateId).get();
+        if (!advDoc.exists || !advDoc.data().isVerified) {
             return res.status(400).json({ success: false, error: 'Advocate not available' });
         }
 
         // Update case
-        caseData.advocateId = advocateId;
-        caseData.status = 'pending_acceptance';
-        await caseData.save();
+        await db.collection('cases').doc(caseId).update({
+            advocateId,
+            status: 'pending_acceptance',
+            updatedAt: new Date().toISOString()
+        });
 
         // Notify advocate
-        await Notification.create({
-            userId: advocate.userId,
+        const advData = advDoc.data();
+        await db.collection('notifications').doc(generateId()).set({
+            userId: advData.userId,
             type: 'case_request',
             title: 'New Case Request',
             message: `You have a new case request: "${caseData.title}"`,
-            data: { caseId: caseData._id }
-        });
-
-        // Log activity
-        await ActivityLog.create({
-            userId: clientId,
-            action: 'advocate_hire',
-            entityType: 'case',
-            entityId: caseId,
-            details: { advocateId }
+            data: { caseId },
+            isRead: false,
+            createdAt: new Date().toISOString()
         });
 
         res.json({
             success: true,
             message: 'Hire request sent to advocate',
-            data: { case: caseData }
+            data: { case: { _id: caseId, ...caseData, advocateId, status: 'pending_acceptance' } }
         });
 
     } catch (error) {
