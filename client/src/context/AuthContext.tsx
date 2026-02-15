@@ -8,7 +8,7 @@ interface AuthContextType {
     token: string | null;
     isLoading: boolean;
     isAuthenticated: boolean;
-    login: (email: string, password: string) => Promise<void>;
+    login: (email: string, password: string) => Promise<User>;
     register: (data: RegisterData) => Promise<void>;
     logout: () => void;
     updateUser: (user: User) => void;
@@ -61,6 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setAdvocateProfile(advocateProfile);
             setToken(token);
             localStorage.setItem('token', token);
+            return user;
         } else {
             throw new Error(response.data.message);
         }

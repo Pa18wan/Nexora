@@ -20,8 +20,15 @@ export function LoginPage() {
         setIsLoading(true);
 
         try {
-            await login(email, password);
-            navigate('/dashboard');
+            const loggedInUser = await login(email, password);
+            // Role-based redirect
+            if (loggedInUser?.role === 'admin') {
+                navigate('/admin');
+            } else if (loggedInUser?.role === 'advocate') {
+                navigate('/advocate');
+            } else {
+                navigate('/dashboard');
+            }
         } catch (err: any) {
             setError(err.response?.data?.message || 'Login failed. Please try again.');
         } finally {
@@ -32,8 +39,8 @@ export function LoginPage() {
     const fillDemoCredentials = (role: 'admin' | 'client' | 'advocate') => {
         const credentials = {
             admin: { email: 'admin@nexora.com', password: 'password123' },
-            client: { email: 'client1@example.com', password: 'password123' },
-            advocate: { email: 'advocate1@example.com', password: 'password123' }
+            client: { email: 'client@nexora.com', password: 'password123' },
+            advocate: { email: 'advocate@nexora.com', password: 'password123' }
         };
         setEmail(credentials[role].email);
         setPassword(credentials[role].password);
