@@ -20,4 +20,6 @@ router.put('/settings', adminController.updateSystemSettings);
 router.get('/complaints', adminController.getComplaints);
 router.put('/complaints/:complaintId/resolve', adminController.resolveComplaint);
 
+router.get('/analytics', adminController.getAnalytics);
+
 export default router;

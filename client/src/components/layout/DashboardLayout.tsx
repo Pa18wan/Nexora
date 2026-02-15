@@ -87,19 +87,7 @@ export function DashboardLayout() {
             <aside className="dashboard-sidebar">
                 <div className="sidebar-header">
                     <Link to="/" className="sidebar-logo">
-                        <div className="logo-icon">
-                            <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <defs>
-                                    <linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                                        <stop offset="0%" stopColor="#06b6d4" />
-                                        <stop offset="50%" stopColor="#6366f1" />
-                                        <stop offset="100%" stopColor="#8b5cf6" />
-                                    </linearGradient>
-                                </defs>
-                                <path d="M20 5L35 15L28 20L35 25L20 35L5 25L12 20L5 15L20 5Z" fill="url(#logoGradient)" />
-                                <path d="M20 15L28 20L20 25L12 20L20 15Z" fill="white" fillOpacity="0.3" />
-                            </svg>
-                        </div>
+                        <img src="/logo.svg" alt="Nexora" className="logo-img" style={{ height: '32px', width: 'auto' }} />
                         {sidebarOpen && <span className="logo-text">Nexora</span>}
                     </Link>
                     <button className="sidebar-toggle" onClick={() => setSidebarOpen(!sidebarOpen)}>

@@ -8,6 +8,12 @@ Built with a focus on user experience, security, and efficiency, Nexora offers a
 
 ---
 
+## 🌐 Live Demo
+
+🚀 **Experience the platform live here:** [https://nexora-rust-one.vercel.app/](https://nexora-rust-one.vercel.app/)
+
+---
+
 ## 🚀 Key Features
 
 ### 👥 For Clients
@@ -207,8 +213,8 @@ For testing purposes, you can use the following pre-seeded accounts:
 | Role | Email | Password |
 | :--- | :--- | :--- |
 | **Admin** | `admin@nexora.com` | `password123` |
-| **Client** | `client1@example.com` | `password123` |
-| **Advocate** | `advocate1@example.com` | `password123` |
+| **Client** | `client@nexora.com` | `password123` |
+| **Advocate** | `advocate@nexora.com` | `password123` |
 
 ---
 

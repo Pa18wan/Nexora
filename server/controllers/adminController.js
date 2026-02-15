@@ -393,3 +393,183 @@ export const resolveComplaint = async (req, res) => {
         res.status(500).json({ success: false, error: 'Failed to resolve complaint' });
     }
 };
+
+/**
+ * Get platform analytics
+ */
+export const getAnalytics = async (req, res) => {
+    try {
+        // Get all collections data
+        const [usersSnap, advocatesSnap, casesSnap, aiLogsSnap, complaintsSnap, reviewsSnap, docsSnap, notifsSnap] = await Promise.all([
+            db.collection('users').get(),
+            db.collection('advocates').get(),
+            db.collection('cases').get(),
+            db.collection('aiLogs').get(),
+            db.collection('complaints').get(),
+            db.collection('reviews').get(),
+            db.collection('documents').get(),
+            db.collection('notifications').get()
+        ]);
+
+        const users = queryToArray(usersSnap);
+        const advocates = queryToArray(advocatesSnap);
+        const cases = queryToArray(casesSnap);
+        const aiLogs = queryToArray(aiLogsSnap);
+        const complaints = queryToArray(complaintsSnap);
+        const reviews = queryToArray(reviewsSnap);
+
+        // User breakdown
+        const clients = users.filter(u => u.role === 'client');
+        const advocateUsers = users.filter(u => u.role === 'advocate');
+        const admins = users.filter(u => u.role === 'admin');
+        const activeUsers = users.filter(u => u.isActive);
+        const verifiedUsers = users.filter(u => u.isVerified);
+
+        // Case category distribution
+        const categoryMap = {};
+        cases.forEach(c => {
+            const cat = c.category || 'Uncategorized';
+            categoryMap[cat] = (categoryMap[cat] || 0) + 1;
+        });
+        const caseCategories = Object.entries(categoryMap)
+            .map(([name, count]) => ({ name, count }))
+            .sort((a, b) => b.count - a.count);
+
+        // Case status distribution
+        const statusMap = {};
+        cases.forEach(c => {
+            const s = c.status || 'unknown';
+            statusMap[s] = (statusMap[s] || 0) + 1;
+        });
+        const caseStatuses = Object.entries(statusMap)
+            .map(([name, count]) => ({ name, count }))
+            .sort((a, b) => b.count - a.count);
+
+        // Urgency distribution
+        const urgencyMap = {};
+        cases.forEach(c => {
+            const u = c.urgencyLevel || 'unknown';
+            urgencyMap[u] = (urgencyMap[u] || 0) + 1;
+        });
+        const urgencyDistribution = Object.entries(urgencyMap)
+            .map(([level, count]) => ({ level, count }));
+
+        // Advocate stats
+        const verifiedAdvocates = advocates.filter(a => a.isVerified);
+        const pendingAdvocates = advocates.filter(a => !a.isVerified);
+        const avgRating = verifiedAdvocates.length > 0
+            ? (verifiedAdvocates.reduce((sum, a) => sum + (a.rating || 0), 0) / verifiedAdvocates.length).toFixed(1)
+            : 0;
+        const totalAdvocateCases = verifiedAdvocates.reduce((sum, a) => sum + (a.totalCases || 0), 0);
+
+        // AI usage
+        const chatLogs = aiLogs.filter(l => l.type === 'chat');
+        const analysisLogs = aiLogs.filter(l => l.type === 'case_analysis');
+
+        // Complaint stats
+        const pendingComplaints = complaints.filter(c => c.status === 'pending');
+        const resolvedComplaints = complaints.filter(c => c.status === 'resolved');
+
+        // Monthly user growth (approximate from createdAt)
+        const monthlyGrowth = [];
+        const now = new Date();
+        for (let i = 5; i >= 0; i--) {
+            const month = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            const nextMonth = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
+            const monthUsers = users.filter(u => {
+                const d = new Date(u.createdAt);
+                return d >= month && d < nextMonth;
+            });
+            monthlyGrowth.push({
+                month: month.toLocaleString('default', { month: 'short', year: '2-digit' }),
+                users: monthUsers.length,
+                cases: cases.filter(c => {
+                    const d = new Date(c.createdAt);
+                    return d >= month && d < nextMonth;
+                }).length
+            });
+        }
+
+        // Top advocates by rating
+        const topAdvocates = verifiedAdvocates
+            .sort((a, b) => (b.rating || 0) - (a.rating || 0))
+            .slice(0, 5)
+            .map(a => ({
+                id: a._id,
+                userId: a.userId,
+                rating: a.rating,
+                totalCases: a.totalCases,
+                successRate: a.successRate,
+                specialization: a.specialization
+            }));
+
+        // Enrich top advocates with user names
+        for (const adv of topAdvocates) {
+            if (adv.userId) {
+                const uDoc = await db.collection('users').doc(adv.userId).get();
+                if (uDoc.exists) {
+                    adv.name = uDoc.data().name;
+                }
+            }
+        }
+
+        // Location distribution
+        const locationMap = {};
+        cases.forEach(c => {
+            const loc = typeof c.location === 'string' ? c.location : c.location?.city || 'Unknown';
+            locationMap[loc] = (locationMap[loc] || 0) + 1;
+        });
+        const locationDistribution = Object.entries(locationMap)
+            .map(([city, count]) => ({ city, count }))
+            .sort((a, b) => b.count - a.count);
+
+        res.json({
+            success: true,
+            data: {
+                overview: {
+                    totalUsers: users.length,
+                    totalClients: clients.length,
+                    totalAdvocates: advocateUsers.length,
+                    totalAdmins: admins.length,
+                    activeUsers: activeUsers.length,
+                    verifiedUsers: verifiedUsers.length,
+                    totalCases: cases.length,
+                    totalDocuments: docsSnap.size,
+                    totalNotifications: notifsSnap.size,
+                    totalAIInteractions: aiLogs.length,
+                    totalReviews: reviews.length
+                },
+                cases: {
+                    categories: caseCategories,
+                    statuses: caseStatuses,
+                    urgencyDistribution
+                },
+                advocates: {
+                    verified: verifiedAdvocates.length,
+                    pending: pendingAdvocates.length,
+                    avgRating: parseFloat(avgRating),
+                    totalCasesHandled: totalAdvocateCases,
+                    topAdvocates
+                },
+                ai: {
+                    totalInteractions: aiLogs.length,
+                    chatSessions: chatLogs.length,
+                    caseAnalyses: analysisLogs.length
+                },
+                complaints: {
+                    total: complaints.length,
+                    pending: pendingComplaints.length,
+                    resolved: resolvedComplaints.length,
+                    inProgress: complaints.filter(c => c.status === 'in_progress').length
+                },
+                trends: {
+                    monthlyGrowth,
+                    locationDistribution
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Analytics error:', error);
+        res.status(500).json({ success: false, error: 'Failed to load analytics' });
+    }
+};

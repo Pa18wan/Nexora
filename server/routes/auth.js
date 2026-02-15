@@ -231,11 +231,12 @@ router.put('/me', async (req, res) => {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
 
-        const { name, email, phone } = req.body;
+        const { name, email, phone, bio } = req.body;
         const updates = { updatedAt: new Date().toISOString() };
         if (name) updates.name = name;
-        if (email) updates.email = email;
-        if (phone) updates.phone = phone;
+        if (email) updates.email = email.toLowerCase();
+        if (phone !== undefined) updates.phone = phone;
+        if (bio !== undefined) updates.bio = bio;
 
         await db.collection('users').doc(decoded.id).update(updates);
 
@@ -254,7 +255,8 @@ router.put('/me', async (req, res) => {
                     role: user.role,
                     avatar: avatarUrl,
                     isVerified: user.isVerified,
-                    phone: user.phone
+                    phone: user.phone,
+                    bio: user.bio
                 }
             }
         });
@@ -264,4 +266,51 @@ router.put('/me', async (req, res) => {
     }
 });
 
+// Change password
+router.put('/change-password', async (req, res) => {
+    try {
+        const token = req.headers.authorization?.split(' ')[1];
+        if (!token) {
+            return res.status(401).json({ success: false, message: 'Not authorized' });
+        }
+
+        const jwt = await import('jsonwebtoken');
+        const decoded = jwt.default.verify(token, process.env.JWT_SECRET);
+
+        const userDoc = await db.collection('users').doc(decoded.id).get();
+        if (!userDoc.exists) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        const { currentPassword, newPassword } = req.body;
+        if (!currentPassword || !newPassword) {
+            return res.status(400).json({ success: false, message: 'Current and new password are required' });
+        }
+
+        if (newPassword.length < 6) {
+            return res.status(400).json({ success: false, message: 'New password must be at least 6 characters' });
+        }
+
+        const userData = userDoc.data();
+        const isMatch = await bcrypt.compare(currentPassword, userData.password);
+        if (!isMatch) {
+            return res.status(400).json({ success: false, message: 'Current password is incorrect' });
+        }
+
+        const salt = await bcrypt.genSalt(12);
+        const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+        await db.collection('users').doc(decoded.id).update({
+            password: hashedPassword,
+            updatedAt: new Date().toISOString()
+        });
+
+        res.json({ success: true, message: 'Password changed successfully' });
+    } catch (error) {
+        console.error('Change password error:', error);
+        res.status(500).json({ success: false, message: 'Failed to change password' });
+    }
+});
+
 export default router;
+

@@ -38,7 +38,8 @@ export const authAPI = {
     login: (credentials: any) => api.post('/auth/login', credentials),
     register: (data: any) => api.post('/auth/register', data),
     getMe: () => api.get('/auth/me'),
-    updateProfile: (data: any) => api.put('/auth/me', data)
+    updateProfile: (data: any) => api.put('/auth/me', data),
+    changePassword: (data: any) => api.put('/auth/change-password', data)
 };
 
 // Client Panel API
@@ -111,7 +112,8 @@ export const adminAPI = {
     getSettings: () => api.get('/admin/settings'),
     updateSettings: (updates: any[]) => api.put('/admin/settings', { updates }),
     getComplaints: (params?: any) => api.get('/admin/complaints', { params }),
-    resolveComplaint: (complaintId: string, action: string, notes?: string) => api.put(`/admin/complaints/${complaintId}/resolve`, { action, notes })
+    resolveComplaint: (complaintId: string, action: string, notes?: string) => api.put(`/admin/complaints/${complaintId}/resolve`, { action, notes }),
+    getAnalytics: () => api.get('/admin/analytics')
 };
 
 // Shared Cases API

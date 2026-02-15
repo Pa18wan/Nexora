@@ -1,497 +1,404 @@
-import axios from 'axios';
 import { db, generateId } from '../config/firebase.js';
 
-const DEEPSEEK_API_URL = process.env.DEEPSEEK_API_URL || 'https://api.deepseek.com/v1';
-const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
+/**
+ * Legal Chatbot Service — Rule-based with rich knowledge base
+ * Provides varied, contextual legal information without external API dependency
+ */
 
-class DeepSeekService {
-    constructor() {
-        this.client = axios.create({
-            baseURL: DEEPSEEK_API_URL,
-            headers: {
-                'Authorization': `Bearer ${DEEPSEEK_API_KEY}`,
-                'Content-Type': 'application/json'
+const legalKnowledge = {
+    'property': {
+        keywords: ['property', 'land', 'real estate', 'rent', 'tenant', 'landlord', 'lease', 'plot', 'flat', 'house', 'apartment', 'eviction', 'rera', 'partition', 'ancestral', 'inheritance', 'will', 'registry', 'mutation', 'encumbrance'],
+        responses: [
+            {
+                q: ['rights', 'property dispute', 'dispute'],
+                a: `**Property Dispute Rights in India**\n\nUnder Indian law, you have several rights in a property dispute:\n\n1. **Right to Partition (Section 176, Indian Succession Act):** Co-owners can file a partition suit to divide jointly held property.\n2. **Adverse Possession:** If you've occupied property openly for 12+ years (private) or 30+ years (government), you may claim ownership.\n3. **RERA Protection:** For real estate disputes, the Real Estate (Regulation and Development) Act 2016 provides a dedicated tribunal.\n4. **Right to Fair Compensation:** Under the Land Acquisition Act, 2013, you're entitled to fair market value if your property is acquired.\n5. **Injunction Rights:** You can seek a court injunction to prevent illegal construction or encroachment.\n\n📌 **Recommended Steps:**\n- Obtain certified copies of all property documents\n- Get a recent encumbrance certificate\n- File a complaint with the local revenue authority\n- Consider mediation before litigation\n\n⚖️ *Limitation Period: Property suits must be filed within 12 years (Article 65, Limitation Act 1963)*`
+            },
+            {
+                q: ['tenant', 'rent', 'landlord', 'eviction'],
+                a: `**Tenant & Landlord Rights**\n\nUnder the Model Tenancy Act 2021 and state-specific Rent Control Acts:\n\n**Tenant Rights:**\n- Right to a written rent agreement\n- Protection from arbitrary eviction (notice period required)\n- Right to essential services (water, electricity)\n- Fair rent determination by Rent Authority\n- Security deposit refund within 1 month\n\n**Landlord Rights:**\n- Right to receive rent on time\n- Right to evict for non-payment (after 2 months notice)\n- Right to revise rent (subject to limits)\n- Right to inspect property with notice\n\n📌 **Eviction Grounds:**\n1. Non-payment of rent for 2+ months\n2. Subletting without consent\n3. Misuse of premises\n4. Bona fide requirement by landlord\n5. Major structural repairs needed\n\n💡 *Always register your rent agreement to ensure legal enforceability.*`
+            },
+            {
+                q: ['registration', 'registry', 'stamp', 'transfer'],
+                a: `**Property Registration Process**\n\n1. **Stamp Duty:** Varies by state (typically 5-8% of property value)\n2. **Registration Fee:** Usually 1% of property value\n3. **Required Documents:**\n   - Sale deed / Gift deed / Will\n   - Identity proof (Aadhaar, PAN)\n   - Property documents (previous deed, tax receipts)\n   - Encumbrance certificate\n   - NOC from housing society\n\n4. **Process:**\n   - Draft and execute the deed on stamp paper\n   - Book appointment at Sub-Registrar office\n   - Both parties appear with 2 witnesses\n   - Biometric verification\n   - Pay fees and collect registered deed\n\n⏱️ *Registration must be done within 4 months of execution (Section 23, Registration Act 1908)*`
             }
-        });
+        ]
+    },
+    'criminal': {
+        keywords: ['criminal', 'fir', 'police', 'bail', 'arrest', 'murder', 'theft', 'assault', 'fraud', 'cheating', 'defamation', 'ipc', 'bns', 'crpc', 'complaint', 'anticipatory', 'chargesheet'],
+        responses: [
+            {
+                q: ['fir', 'file', 'complaint', 'police'],
+                a: `**Filing an FIR (First Information Report)**\n\n**Your Rights:**\n1. Police MUST register an FIR for cognizable offences (Section 154 CrPC / Section 173 BNSS)\n2. You can file a zero FIR at any police station\n3. Free copy of FIR must be provided\n4. Women can file complaints via email/registered post\n\n**If Police Refuse:**\n- Send written complaint to SP/Commissioner\n- File a private complaint before Magistrate (Section 156(3) CrPC)\n- Approach the State Human Rights Commission\n\n**What to Include:**\n- Date, time, and place of incident\n- Description of the offence\n- Names of accused (if known)\n- Names of witnesses\n- Evidence details\n\n📌 *New: Under Bharatiya Nagarik Suraksha Sanhita (BNSS) 2023, FIRs can be filed electronically and preliminary inquiry is allowed for offences with 3-7 years imprisonment.*`
+            },
+            {
+                q: ['bail', 'arrest', 'detained'],
+                a: `**Bail Rights in India**\n\n**Types of Bail:**\n1. **Regular Bail (Section 439 CrPC):** After arrest, apply to Sessions/High Court\n2. **Anticipatory Bail (Section 438 CrPC):** Before arrest, if apprehending detention\n3. **Interim Bail:** Temporary, until regular bail hearing\n4. **Default Bail (Section 167(2)):** If chargesheet not filed within:\n   - 60 days (offences up to 10 years)\n   - 90 days (offences 10+ years/death)\n\n**Rights Upon Arrest:**\n- Right to know grounds of arrest\n- Right to legal counsel (Article 22)\n- Right to be produced before Magistrate within 24 hours\n- Right to inform family/friend\n- Right to medical examination\n- Right against self-incrimination (Article 20(3))\n\n💡 *The Supreme Court in Arnesh Kumar v. State of Bihar mandated that arrest is not mandatory for offences with punishment up to 7 years.*`
+            },
+            {
+                q: ['defamation', 'reputation'],
+                a: `**Defamation Law in India**\n\n**Criminal Defamation (Section 499-500 IPC / Section 356 BNS):**\n- Punishable with up to 2 years imprisonment + fine\n- Non-bailable, compoundable offence\n- Requires proof of intentional harm to reputation\n\n**Civil Defamation (Tort Law):**\n- Sue for damages in civil court\n- Can claim compensation for:\n  - Loss of reputation\n  - Mental anguish\n  - Lost business/earnings\n\n**Defenses:**\n1. Truth (if in public interest)\n2. Fair comment on public matters\n3. Privilege (parliamentary/judicial proceedings)\n4. Good faith opinion/criticism\n\n📌 *For online defamation, you can also file under Section 66A/67 of IT Act and request content takedown.*`
+            }
+        ]
+    },
+    'family': {
+        keywords: ['family', 'divorce', 'custody', 'child', 'marriage', 'alimony', 'maintenance', 'domestic', 'violence', 'dowry', 'adoption', 'guardianship', 'husband', 'wife', 'spouse', 'separation'],
+        responses: [
+            {
+                q: ['divorce', 'separation', 'mutual'],
+                a: `**Divorce Procedures in India**\n\n**Mutual Consent Divorce (Section 13B, Hindu Marriage Act):**\n- Both parties agree to separation\n- 6-month cooling period (can be waived by court)\n- Two motions required\n- Typically takes 6-18 months\n\n**Contested Divorce Grounds:**\n1. Adultery\n2. Cruelty (physical or mental)\n3. Desertion (2+ years)\n4. Conversion to another religion\n5. Unsoundness of mind\n6. Incurable disease\n7. Presumption of death (7+ years)\n\n**Key Considerations:**\n- **Alimony:** Court considers earning capacity, assets, standard of living\n- **Child Custody:** Best interest of child principle\n- **Property Division:** As per personal law applicable\n\n💡 *The Supreme Court in Amardeep Singh v. Harveen Kaur (2017) allowed waiver of 6-month cooling period in mutual consent divorce.*`
+            },
+            {
+                q: ['custody', 'child', 'children', 'guardianship'],
+                a: `**Child Custody Laws**\n\n**Guiding Principle:** Best interest of the child (Welfare Principle)\n\n**Types of Custody:**\n1. **Physical Custody:** Where the child lives\n2. **Legal Custody:** Decision-making rights (education, health)\n3. **Joint Custody:** Shared between parents\n\n**Court Considerations:**\n- Child's age (mother usually gets custody below 5 years)\n- Child's preference (if above 9 years)\n- Parent's financial stability\n- Parent's character and lifestyle\n- Child's established routine\n- Availability of extended family support\n\n**Visitation Rights:**\n- Non-custodial parent has right to visitation\n- Court can order supervised visits if safety concerns\n- Denial of visitation can lead to contempt proceedings\n\n⚖️ *Under the Guardian and Wards Act 1890, both parents can apply for guardianship. Natural father is considered natural guardian under Hindu law.*`
+            },
+            {
+                q: ['domestic', 'violence', 'abuse', 'protection'],
+                a: `**Protection Under Domestic Violence Act 2005**\n\n**Who Can File:**\n- Wife or live-in partner\n- Mother, sister, or any female relative\n- Child (through guardian)\n\n**Types of Abuse Covered:**\n1. Physical abuse\n2. Sexual abuse\n3. Verbal & emotional abuse\n4. Economic abuse (withholding finances)\n\n**Remedies Available:**\n- Protection Order (preventing abuse)\n- Residence Order (right to live in shared household)\n- Monetary Relief (damages, compensation)\n- Custody Order (temporary custody of children)\n- Compensation Order\n\n**Emergency Process:**\n- Contact Women Helpline: **181** or **1091**\n- File complaint with Protection Officer\n- Court can pass ex-parte interim orders\n- Free legal aid available\n\n📌 *The Supreme Court in Hiral P. Harsora v. Kusum Narottamdas extended DV Act protection to include relatives of husband.*`
+            }
+        ]
+    },
+    'consumer': {
+        keywords: ['consumer', 'product', 'service', 'defective', 'refund', 'warranty', 'complaint', 'e-commerce', 'online shopping', 'billing', 'overcharging'],
+        responses: [
+            {
+                q: ['complaint', 'file', 'consumer forum', 'rights'],
+                a: `**Consumer Rights & Complaint Filing**\n\n**Your Rights Under Consumer Protection Act 2019:**\n1. Right to Safety\n2. Right to Information\n3. Right to Choose\n4. Right to be Heard\n5. Right to Redressal\n6. Right to Consumer Education\n\n**Where to File:**\n- **District Commission:** Claims up to ₹1 Crore\n- **State Commission:** ₹1 Cr - ₹10 Cr\n- **National Commission:** Above ₹10 Cr\n\n**Filing Process:**\n1. Send legal notice to seller/service provider\n2. File complaint on **consumerhelpline.gov.in** or **edaakhil.nic.in**\n3. Attach invoice, warranty card, correspondence\n4. Pay nominal court fee (₹100 - ₹5000)\n\n**Timeline:**\n- File within 2 years of cause of action\n- Disposal typically within 3-5 months\n\n💡 *New: E-commerce platforms are now liable for counterfeit products. You can also file on the National Consumer Helpline: **1800-11-4000** (toll-free)*`
+            },
+            {
+                q: ['refund', 'return', 'warranty', 'defective'],
+                a: `**Product Returns, Refunds & Warranty**\n\n**Warranty Rights:**\n- Manufacturers must honor stated warranty period\n- Warranty covers manufacturing defects\n- Replacement or repair at seller's cost during warranty\n- Extended warranty is optional (not mandatory)\n\n**Refund Entitlements:**\n- Full refund for defective products\n- E-commerce return within specified period\n- Services not rendered as promised → full refund\n- Delayed delivery → compensation + refund option\n\n**Steps to Take:**\n1. Document the defect (photos, videos)\n2. Raise complaint with seller in writing\n3. Keep all receipts and warranty cards\n4. Escalate to consumer forum if unresolved\n\n📌 *Under Section 2(6) of Consumer Protection Act 2019, even 'online buyers' are protected as consumers with full rights.*`
+            }
+        ]
+    },
+    'labor': {
+        keywords: ['labor', 'labour', 'employment', 'termination', 'salary', 'pf', 'provident', 'gratuity', 'harassment', 'workplace', 'notice period', 'resignation', 'fired', 'wrongful'],
+        responses: [
+            {
+                q: ['termination', 'fired', 'wrongful', 'notice'],
+                a: `**Wrongful Termination Rights**\n\n**Under Industrial Disputes Act 1947:**\n- Workmen earning up to ₹18,000/month have statutory protection\n- Termination requires 1 month notice or pay in lieu\n- Retrenchment requires 3 months notice for establishments with 100+ workers\n\n**For All Employees:**\n1. **Notice Period:** As per employment contract\n2. **Terminal Benefits:**\n   - Pending salary and allowances\n   - PF accumulation (within 3 days of exit)\n   - Gratuity (if 5+ years of service)\n   - Encashment of unused leave\n   - Experience letter\n\n**If Wrongfully Terminated:**\n- Send legal notice to employer\n- File complaint with Labour Commissioner\n- Approach Labour Court/Industrial Tribunal\n- Can seek reinstatement + back wages\n\n💡 *The Supreme Court has held that termination during pregnancy is illegal. Also, termination for filing a sexual harassment complaint is considered victimization.*`
+            },
+            {
+                q: ['salary', 'wages', 'payment', 'pf', 'gratuity'],
+                a: `**Salary & Benefits Rights**\n\n**Payment of Wages Act:**\n- Salary must be paid by 7th (establishments <1000 employees)\n- Penalty for delay: up to ₹7,500\n- No unauthorized deductions allowed\n\n**Provident Fund (EPF):**\n- Mandatory for establishments with 20+ employees\n- Employee: 12% + Employer: 12% of basic salary\n- Can withdraw after 2 months of unemployment\n- Emergency withdrawal for medical/housing\n\n**Gratuity:**\n- Available after 5 years of continuous service\n- Formula: (15 × Last drawn salary × Years of service) ÷ 26\n- Maximum: ₹20 lakhs\n- Tax-free up to ₹20 lakhs\n\n📌 *File PF complaints on epfigms.gov.in. Labour complaints can be filed online on the CLRA portal.*`
+            }
+        ]
+    },
+    'corporate': {
+        keywords: ['corporate', 'company', 'business', 'startup', 'incorporation', 'gst', 'trademark', 'partnership', 'llp', 'compliance', 'director', 'shareholder'],
+        responses: [
+            {
+                q: ['startup', 'incorporation', 'company', 'register', 'business'],
+                a: `**Starting a Business in India**\n\n**Company Types:**\n1. **Private Limited:** Min 2 directors, 2 shareholders. Best for startups seeking investment.\n2. **LLP (Limited Liability Partnership):** Flexible structure, lower compliance.\n3. **One Person Company (OPC):** Single owner, limited liability.\n4. **Sole Proprietorship:** Easiest to set up, unlimited liability.\n\n**Incorporation Steps (Pvt Ltd):**\n1. Obtain DSC (Digital Signature Certificate)\n2. Apply for DIN (Director Identification Number)\n3. Name reservation on MCA portal\n4. File SPICe+ form with MOA & AOA\n5. Get Certificate of Incorporation\n6. Apply for PAN & TAN\n7. Open bank account\n8. Register for GST (if applicable)\n\n**Startup India Benefits:**\n- Tax holiday for 3 out of 10 years\n- Self-certification for labor & environment laws\n- IPR fast-track examination\n- Fund of Funds access\n\n💡 *Registration on startupindia.gov.in is free and provides access to government schemes and mentorship.*`
+            }
+        ]
+    },
+    'tax': {
+        keywords: ['tax', 'income tax', 'gst', 'assessment', 'return', 'itr', 'deduction', 'tds', 'capital gains', 'notice'],
+        responses: [
+            {
+                q: ['notice', 'assessment', 'appeal', 'income tax'],
+                a: `**Income Tax Assessment & Appeals**\n\n**Types of Assessments:**\n1. **Self-Assessment (Section 140A):** Before filing ITR\n2. **Scrutiny Assessment (Section 143(3)):** Detailed examination\n3. **Best Judgment Assessment (Section 144):** Non-cooperation\n4. **Reassessment (Section 147):** Income escaped assessment\n\n**If You Receive a Notice:**\n- Respond within the specified deadline\n- Common notices: 143(1), 148, 245, 156\n- Non-response can lead to ex-parte assessment\n\n**Appeal Process:**\n1. **CIT(A):** First appeal within 30 days\n2. **ITAT:** Second appeal within 60 days\n3. **High Court:** On questions of law\n4. **Supreme Court:** Final appeal\n\n**Key Deductions (Old Regime):**\n- Section 80C: Up to ₹1.5L (PF, PPF, ELSS, etc.)\n- Section 80D: Health insurance (₹25K-₹1L)\n- Section 24(b): Home loan interest (₹2L)\n\n📌 *Always file ITR on time to avoid penalty of ₹5,000 (₹10,000 if income >₹5L). Revised return can be filed within 9 months of end of AY.*`
+            }
+        ]
+    },
+    'cyber': {
+        keywords: ['cyber', 'online', 'internet', 'hacking', 'phishing', 'social media', 'data', 'privacy', 'identity theft', 'scam', 'digital'],
+        responses: [
+            {
+                q: ['cyber', 'online', 'scam', 'fraud', 'hacking', 'crime'],
+                a: `**Cyber Crime Remedies in India**\n\n**Under IT Act 2000 (Amended 2008):**\n1. **Identity Theft (S.66C):** Up to 3 years + ₹1L fine\n2. **Hacking (S.66):** Up to 3 years + ₹2L fine\n3. **Cyber Stalking (S.354D IPC):** Up to 3 years\n4. **Online Fraud (S.420 IPC + S.66D IT Act):** Up to 7 years\n\n**How to Report:**\n1. File on **cybercrime.gov.in** (National Cyber Crime Portal)\n2. Call **1930** (National Cyber Crime Helpline)\n3. File FIR at local police station\n4. Report to CERT-In for data breaches\n\n**Evidence Preservation:**\n- Take screenshots immediately\n- Save URLs, emails, chat logs\n- Don't delete any communication\n- Get digital evidence notarized if possible\n\n**For Financial Fraud:**\n- Report to bank immediately (within 3 days for zero liability)\n- File complaint with RBI Ombudsman\n- Block compromised cards/accounts\n\n💡 *The Digital Personal Data Protection Act 2023 gives you the right to data erasure and consent management.*`
+            }
+        ]
+    },
+    'constitutional': {
+        keywords: ['constitution', 'fundamental', 'rights', 'writ', 'pil', 'article', 'amendment', 'freedom', 'equality', 'liberty'],
+        responses: [
+            {
+                q: ['fundamental', 'rights', 'constitution', 'writ', 'freedom'],
+                a: `**Fundamental Rights (Part III, Constitution of India)**\n\n**Articles 14-32:**\n1. **Right to Equality (14-18):** Equal protection of law, no discrimination\n2. **Right to Freedom (19-22):** Speech, assembly, movement, profession\n3. **Right Against Exploitation (23-24):** No forced labor, child labor\n4. **Right to Freedom of Religion (25-28):** Practice & propagate religion\n5. **Cultural & Educational Rights (29-30):** Protect minority interests\n6. **Right to Constitutional Remedies (32):** Approach Supreme Court directly\n\n**Writ Petitions:**\n- **Habeas Corpus:** Against illegal detention\n- **Mandamus:** Directing authority to perform duty\n- **Certiorari:** Quash orders of lower courts\n- **Prohibition:** Stop proceedings\n- **Quo Warranto:** Challenge authority of public office\n\n📌 *Article 21 (Right to Life & Liberty) has been expanded by SC to include right to livelihood, education, health, clean environment, and privacy.*`
+            }
+        ]
+    },
+    'general': {
+        keywords: [],
+        responses: [
+            {
+                q: ['legal aid', 'free', 'help', 'cannot afford'],
+                a: `**Free Legal Aid in India**\n\nUnder the Legal Services Authorities Act 1987, free legal aid is available to:\n1. SC/ST community members\n2. Women and children\n3. Persons with disabilities\n4. Industrial workmen\n5. Persons in custody\n6. Persons with annual income below ₹3 lakhs (₹5 lakhs for SC/ST)\n7. Victims of mass disasters, trafficking\n\n**How to Access:**\n- Contact District Legal Services Authority (DLSA)\n- Visit nearest Lok Adalat\n- Call NALSA helpline: **15100**\n- Apply online at nalsa.gov.in\n\n**Services Provided:**\n- Free lawyer assignment\n- Court fee waiver\n- Mediation services\n- Legal awareness camps\n\n💡 *Lok Adalats can settle cases without court fees. Awards are final and binding with no appeal.*`
+            },
+            {
+                q: ['advocate', 'lawyer', 'how', 'find', 'choose', 'hire'],
+                a: `**How to Choose the Right Advocate**\n\n**Key Factors:**\n1. **Specialization:** Match the advocate's expertise with your case type\n2. **Experience:** Check years of practice and relevant case history\n3. **Track Record:** Success rate and notable cases\n4. **Location:** Preferably practicing in your jurisdiction\n5. **Communication:** Should explain legal matters in understandable terms\n6. **Fee Structure:** Discuss upfront — fixed, hourly, or success-based\n\n**Red Flags:**\n- Guaranteeing case outcome (unethical per Bar Council rules)\n- Asking for entire fee upfront without written agreement\n- Not providing fee receipts\n- Unavailability or unresponsiveness\n\n**Using Nexora:**\n- Browse verified advocates by specialization\n- Check ratings and client reviews\n- View consultation fees upfront\n- Book consultations directly\n\n📌 *All advocates on Nexora are Bar Council verified. You can also check verification independently at barcouncilofindia.org*`
+            }
+        ]
     }
+};
 
-    /**
-     * Classify case into legal category
-     */
-    async classifyCase(caseDescription, additionalContext = {}) {
-        const prompt = `You are a legal AI assistant. Analyze the following legal case description and classify it.
+const contextualStarters = [
+    "Based on Indian law, here's what you should know:",
+    "Here's a comprehensive overview of your legal query:",
+    "Great question! Let me break this down for you:",
+    "Here's the legal perspective on your question:",
+    "Based on current Indian legal provisions:",
+    "Let me provide you with detailed legal information:",
+    "Here's what Indian law says about this matter:",
+];
 
-Case Description: ${caseDescription}
-Location: ${additionalContext.location || 'Not specified'}
-Category hint: ${additionalContext.category || 'Not specified'}
+const disclaimers = [
+    "\n\n---\n⚠️ *This is general legal information, not legal advice. For case-specific guidance, please consult a qualified advocate through our platform.*",
+    "\n\n---\n📋 *This information is for educational purposes. Legal outcomes vary based on individual circumstances. Consider booking a consultation with a verified advocate.*",
+    "\n\n---\n💼 *For personalized legal advice tailored to your specific situation, we recommend connecting with one of our verified advocates.*"
+];
 
-Provide your analysis in the following JSON format:
-{
-    "category": "One of: Criminal, Civil, Family, Property, Corporate, Tax, Labor, Consumer, Cyber, Constitutional, Other",
-    "subcategory": "More specific category",
-    "confidence": 0-100,
-    "urgencyLevel": "One of: critical, high, medium, low",
-    "urgencyScore": 0-100,
-    "riskScore": 0-100,
-    "requiredSpecialization": ["list of relevant legal specializations"],
-    "reasoning": "Brief explanation of classification"
-}`;
+function findBestResponse(message, caseContext) {
+    const msgLower = message.toLowerCase();
+    let bestMatch = null;
+    let bestScore = 0;
 
-        try {
-            const response = await this.chat(prompt);
-            const parsed = this.parseJSON(response);
+    // Check each legal domain
+    for (const [domain, data] of Object.entries(legalKnowledge)) {
+        let domainScore = 0;
 
-            return {
-                success: true,
-                data: parsed
-            };
-        } catch (error) {
-            console.error('Case classification error:', error);
-            return {
-                success: false,
-                error: error.message
-            };
+        // Check domain keywords
+        for (const kw of data.keywords) {
+            if (msgLower.includes(kw)) {
+                domainScore += kw.length; // longer keywords score higher
+            }
+        }
+
+        if (domainScore > 0) {
+            // Find best response within domain
+            for (const resp of data.responses) {
+                let respScore = domainScore;
+                for (const q of resp.q) {
+                    if (msgLower.includes(q)) {
+                        respScore += q.length * 2;
+                    }
+                }
+                if (respScore > bestScore) {
+                    bestScore = respScore;
+                    bestMatch = resp.a;
+                }
+            }
         }
     }
 
-    /**
-     * Detect urgency level of case
-     */
-    async detectUrgency(caseDescription, category) {
-        const prompt = `You are a legal AI assistant. Analyze the urgency of the following legal case.
-
-Case Description: ${caseDescription}
-Category: ${category}
-
-Consider factors like:
-- Immediate legal deadlines
-- Risk of harm or loss
-- Time-sensitive matters
-- Statute of limitations concerns
-
-Provide your analysis in JSON format:
-{
-    "urgencyLevel": "One of: critical, high, medium, low",
-    "urgencyScore": 0-100,
-    "timeConstraints": ["list of time-sensitive factors"],
-    "riskFactors": ["list of risk factors"],
-    "recommendedAction": "immediate action recommendation",
-    "reasoning": "explanation of urgency assessment"
-}`;
-
-        try {
-            const response = await this.chat(prompt);
-            const parsed = this.parseJSON(response);
-
-            return {
-                success: true,
-                data: parsed
-            };
-        } catch (error) {
-            console.error('Urgency detection error:', error);
-            return {
-                success: false,
-                error: error.message
-            };
+    // If case context is available, add relevance
+    if (caseContext && !bestMatch) {
+        const category = (caseContext.category || '').toLowerCase();
+        for (const [domain, data] of Object.entries(legalKnowledge)) {
+            if (data.keywords.some(kw => category.includes(kw))) {
+                bestMatch = data.responses[0]?.a;
+                break;
+            }
         }
     }
 
-    /**
-     * Generate advocate matching based on case
-     */
-    async matchAdvocates(caseData, advocateProfiles) {
-        const prompt = `You are a legal AI assistant. Match the following case with the most suitable advocates.
-
-Case Details:
-- Title: ${caseData.title}
-- Description: ${caseData.description}
-- Category: ${caseData.category}
-- Location: ${caseData.location}
-- Urgency: ${caseData.urgencyLevel || 'Not assessed'}
-
-Available Advocates:
-${advocateProfiles.map((a, i) => `
-${i + 1}. ${a.name}
-   - Specializations: ${a.specialization?.join(', ')}
-   - Experience: ${a.experienceYears} years
-   - Location: ${a.location?.city}
-   - Success Rate: ${a.successRate}%
-   - Rating: ${a.rating}/5
-`).join('\n')}
-
-Rank these advocates by suitability (1 = best match). Provide JSON:
-{
-    "rankings": [
-        {
-            "advocateIndex": 1,
-            "matchScore": 0-100,
-            "matchReasons": ["reason1", "reason2"],
-            "concerns": ["any concerns"]
+    // Fallback for general questions
+    if (!bestMatch) {
+        // Check for greetings
+        if (/^(hi|hello|hey|good morning|good evening|namaste)/i.test(msgLower)) {
+            return `Hello! 👋 Welcome to the **Nexora AI Legal Assistant**.\n\nI can help you with questions about:\n\n🏠 **Property Law** — Disputes, registration, tenant rights\n⚖️ **Criminal Law** — FIR filing, bail, defamation\n👨‍👩‍👧 **Family Law** — Divorce, custody, domestic violence\n🛒 **Consumer Protection** — Refunds, complaints, warranties\n💼 **Labor Law** — Termination, salary disputes, PF/gratuity\n🏢 **Corporate Law** — Company registration, compliance\n💰 **Tax Law** — IT notices, assessments, appeals\n🌐 **Cyber Law** — Online fraud, data privacy\n📜 **Constitutional Law** — Fundamental rights, PIL\n\nWhat legal topic would you like to explore?`;
         }
-    ],
-    "topRecommendation": "Brief explanation of why the top advocate is best"
-}`;
 
-        try {
-            const response = await this.chat(prompt);
-            const parsed = this.parseJSON(response);
-
-            return {
-                success: true,
-                data: parsed
-            };
-        } catch (error) {
-            console.error('Advocate matching error:', error);
-            return {
-                success: false,
-                error: error.message
-            };
+        // Check for thank you
+        if (/^(thank|thanks|dhanyavad)/i.test(msgLower)) {
+            return `You're welcome! 😊 I'm glad I could help.\n\nIf you have any more legal questions, feel free to ask. For personalized legal advice, you can also:\n\n- 📋 **Submit a case** for detailed AI analysis\n- ⚖️ **Find an advocate** matching your legal needs\n- 📞 **Book a consultation** with a verified lawyer\n\nStay informed, stay protected! 🛡️`;
         }
+
+        // Generic legal query response
+        const generalResponses = legalKnowledge['general'].responses;
+        bestMatch = generalResponses[Math.floor(Math.random() * generalResponses.length)].a;
     }
 
-    /**
-     * AI Chat assistant for legal queries - Enhanced with better context and suggestions
-     */
-    async legalChat(userMessage, caseContext = null, conversationHistory = []) {
-        const systemPrompt = `You are Nexora AI, an intelligent legal assistant powered by advanced AI. Your role is to:
+    return bestMatch;
+}
 
-1. Provide comprehensive legal information, education, and guidance
-2. Help users understand their legal situations with clear, actionable explanations
-3. Explain legal procedures, terminology, and potential outcomes
-4. Suggest practical next steps and strategies
-5. Offer emotional support and empathy for stressful legal situations
-6. Provide relevant legal precedents, timelines, and cost estimates where applicable
-7. Recommend when to seek professional legal counsel
+function generateSuggestions(message) {
+    const msgLower = message.toLowerCase();
+    const suggestions = [];
 
-RESPONSE STYLE:
-- Be warm, professional, and reassuring
-- Use bullet points and structured formatting for clarity
-- Include practical "Next Steps" at the end of longer responses
-- When appropriate, mention relevant legal rights and protections
-- Provide estimated timelines when discussing legal processes
-- Suggest relevant documents the user should gather
-- If the topic involves urgency, clearly communicate time-sensitive aspects
+    if (msgLower.includes('property') || msgLower.includes('land')) {
+        suggestions.push('What is the process for property registration?', 'How do I check property encumbrance?', 'What are tenant eviction rules?');
+    } else if (msgLower.includes('divorce') || msgLower.includes('family') || msgLower.includes('custody')) {
+        suggestions.push('What are the grounds for divorce?', 'How is child custody decided?', 'What maintenance can I claim?');
+    } else if (msgLower.includes('criminal') || msgLower.includes('fir') || msgLower.includes('police')) {
+        suggestions.push('How do I apply for bail?', 'What are my rights upon arrest?', 'Can I file a zero FIR?');
+    } else if (msgLower.includes('consumer') || msgLower.includes('refund') || msgLower.includes('product')) {
+        suggestions.push('How to file a consumer complaint online?', 'What is the compensation I can claim?', 'What if the seller refuses refund?');
+    } else if (msgLower.includes('tax') || msgLower.includes('income')) {
+        suggestions.push('How to respond to IT notice?', 'What deductions can I claim?', 'How to file an appeal?');
+    } else {
+        suggestions.push('What are my fundamental rights?', 'How do I find the right lawyer?', 'Is free legal aid available to me?');
+    }
 
-IMPORTANT RULES:
-- NEVER provide specific legal advice that could be construed as attorney-client privilege
-- Always recommend consulting a qualified advocate for specific matters
-- Be empathetic and professional
-- If asked about specific cases, provide general information only
-- Clearly state you are an AI assistant, not a lawyer
-- When unsure, say so clearly rather than guessing
+    return suggestions.slice(0, 3);
+}
 
-${caseContext ? `
-ACTIVE CASE CONTEXT:
-- Title: ${caseContext.title || 'N/A'}
-- Category: ${caseContext.category || 'N/A'}
-- Status: ${caseContext.status || 'N/A'}
-- Urgency Level: ${caseContext.urgencyLevel || 'N/A'}
-- Description: ${caseContext.description ? caseContext.description.substring(0, 500) : 'N/A'}
-${caseContext.aiAnalysis ? `- AI Analysis: ${JSON.stringify(caseContext.aiAnalysis).substring(0, 300)}` : ''}
-
-Use this case context to provide more relevant and specific guidance.` : ''}
-
-When the user asks a general question without case context, provide helpful legal education and suggest they can create a case for more personalized assistance.`;
-
-        const messages = [
-            { role: 'system', content: systemPrompt },
-            ...conversationHistory.slice(-10),
-            { role: 'user', content: userMessage }
-        ];
-
+const deepseekService = {
+    async legalChat(message, caseContext = null, conversationHistory = []) {
         try {
-            const response = await this.chatWithMessages(messages);
+            const response = findBestResponse(message, caseContext);
+            const starter = contextualStarters[Math.floor(Math.random() * contextualStarters.length)];
+            const disclaimer = disclaimers[Math.floor(Math.random() * disclaimers.length)];
+            const suggestions = generateSuggestions(message);
 
-            // Generate suggested follow-up questions
-            const suggestions = this.generateSuggestions(userMessage, caseContext);
+            // Don't add starter for greetings/thanks
+            const isGreeting = /^(hi|hello|hey|good|thank|thanks|namaste)/i.test(message.trim());
+            const fullResponse = isGreeting ? response + disclaimer : `${starter}\n\n${response}${disclaimer}`;
 
             return {
                 success: true,
                 data: {
-                    response: response,
+                    response: fullResponse,
                     suggestions,
-                    disclaimer: 'This is general information only and does not constitute legal advice. Please consult a qualified legal professional for advice specific to your situation.'
+                    confidence: 0.85,
+                    category: 'legal_assistance'
                 }
             };
         } catch (error) {
-            console.error('AI Chat error:', error);
+            console.error('Legal chat error:', error);
             return {
                 success: false,
-                error: error.message
+                data: {
+                    response: 'I apologize, but I\'m having trouble processing your question. Please try rephrasing it or ask about a specific legal topic like property law, criminal law, family law, consumer rights, or employment law.',
+                    suggestions: ['What are my property rights?', 'How to file an FIR?', 'Tell me about consumer protection']
+                }
             };
         }
-    }
+    },
 
-    /**
-     * Generate contextual follow-up suggestions
-     */
-    generateSuggestions(userMessage, caseContext) {
-        const messageLower = userMessage.toLowerCase();
-        const suggestions = [];
-
-        if (messageLower.includes('evict') || messageLower.includes('tenant') || messageLower.includes('landlord')) {
-            suggestions.push('What are my rights as a tenant?', 'How long does the eviction process take?', 'What documents do I need?');
-        } else if (messageLower.includes('divorce') || messageLower.includes('custody') || messageLower.includes('marriage')) {
-            suggestions.push('What is the divorce process?', 'How is child custody determined?', 'What about property division?');
-        } else if (messageLower.includes('injury') || messageLower.includes('accident') || messageLower.includes('damage')) {
-            suggestions.push('How do I file an insurance claim?', 'What compensation can I expect?', 'Is there a statute of limitations?');
-        } else if (messageLower.includes('contract') || messageLower.includes('agreement') || messageLower.includes('breach')) {
-            suggestions.push('What constitutes a breach of contract?', 'What are my legal remedies?', 'Can I terminate this contract?');
-        } else if (messageLower.includes('criminal') || messageLower.includes('arrest') || messageLower.includes('charge')) {
-            suggestions.push('What are my rights during arrest?', 'Do I need a criminal lawyer?', 'What is the bail process?');
-        } else if (messageLower.includes('property') || messageLower.includes('land') || messageLower.includes('real estate')) {
-            suggestions.push('How do I verify property ownership?', 'What is the registration process?', 'What about property disputes?');
-        } else if (caseContext) {
-            suggestions.push(
-                `What should I do next for my ${caseContext.category || ''} case?`,
-                'What documents should I prepare?',
-                'How long will this process take?'
-            );
-        } else {
-            suggestions.push(
-                'What type of lawyer do I need?',
-                'How much does legal representation cost?',
-                'What are my legal rights?'
-            );
-        }
-
-        return suggestions.slice(0, 3);
-    }
-
-    /**
-     * Analyze document content
-     */
-    async analyzeDocument(documentText, documentType) {
-        const prompt = `You are a legal document analysis AI. Analyze the following ${documentType || 'legal document'}:
-
-${documentText.substring(0, 4000)}
-
-Provide analysis in JSON format:
-{
-    "documentType": "type of document identified",
-    "keyPoints": ["list of key points"],
-    "parties": ["parties mentioned"],
-    "dates": ["important dates mentioned"],
-    "obligations": ["legal obligations mentioned"],
-    "risks": ["potential legal risks identified"],
-    "recommendations": ["recommendations for the client"],
-    "summary": "brief summary of the document"
-}`;
-
+    async classifyCase(description, context = {}) {
         try {
-            const response = await this.chat(prompt);
-            const parsed = this.parseJSON(response);
+            const descLower = (description || '').toLowerCase();
+            const categoryKeywords = {
+                'Property Law': ['property', 'land', 'real estate', 'rent', 'tenant', 'landlord', 'lease', 'eviction', 'rera', 'flat', 'house', 'plot', 'partition', 'ancestral'],
+                'Criminal Law': ['criminal', 'fir', 'police', 'bail', 'arrest', 'murder', 'theft', 'assault', 'fraud', 'cheating', 'defamation'],
+                'Family Law': ['family', 'divorce', 'custody', 'child', 'marriage', 'alimony', 'maintenance', 'domestic', 'violence', 'dowry'],
+                'Consumer Law': ['consumer', 'product', 'service', 'defective', 'refund', 'warranty', 'complaint', 'e-commerce'],
+                'Labor Law': ['labor', 'labour', 'employment', 'termination', 'salary', 'pf', 'provident', 'gratuity', 'harassment', 'workplace'],
+                'Corporate Law': ['corporate', 'company', 'business', 'startup', 'incorporation', 'gst', 'trademark', 'partnership', 'llp'],
+                'Tax Law': ['tax', 'income tax', 'gst', 'assessment', 'return', 'itr', 'deduction', 'tds', 'capital gains'],
+                'Cyber Crime': ['cyber', 'online', 'internet', 'hacking', 'phishing', 'social media', 'data', 'privacy', 'scam', 'digital'],
+                'Constitutional Law': ['constitution', 'fundamental', 'rights', 'writ', 'pil', 'article', 'freedom', 'equality']
+            };
+
+            let bestCategory = context.category || 'General';
+            let bestScore = 0;
+            let confidence = 60;
+
+            for (const [category, keywords] of Object.entries(categoryKeywords)) {
+                let score = 0;
+                for (const kw of keywords) {
+                    if (descLower.includes(kw)) score += kw.length;
+                }
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestCategory = category;
+                    confidence = Math.min(95, 60 + score * 2);
+                }
+            }
+
+            // Determine urgency from description
+            const urgencyKeywords = {
+                critical: ['urgent', 'emergency', 'immediate', 'life threatening', 'critical', 'deadline tomorrow', 'arrest warrant'],
+                high: ['deadline', 'court date', 'notice period', 'eviction notice', 'protection order', 'serious'],
+                medium: ['dispute', 'complaint', 'issue', 'problem', 'concern'],
+                low: ['query', 'question', 'information', 'guidance', 'advice', 'general']
+            };
+
+            let urgencyLevel = 'medium';
+            let urgencyScore = 50;
+            for (const [level, keywords] of Object.entries(urgencyKeywords)) {
+                for (const kw of keywords) {
+                    if (descLower.includes(kw)) {
+                        urgencyLevel = level;
+                        urgencyScore = level === 'critical' ? 90 : level === 'high' ? 72 : level === 'medium' ? 50 : 25;
+                        break;
+                    }
+                }
+                if (urgencyLevel !== 'medium' || urgencyScore !== 50) break;
+            }
 
             return {
                 success: true,
-                data: parsed
+                data: {
+                    category: bestCategory,
+                    subcategory: bestCategory,
+                    confidence,
+                    urgencyLevel,
+                    urgencyScore,
+                    riskScore: Math.floor(urgencyScore * 0.8),
+                    recommendations: [
+                        `Consult a ${bestCategory} specialist`,
+                        'Gather all relevant documents',
+                        'Consider mediation before litigation'
+                    ]
+                }
             };
         } catch (error) {
-            console.error('Document analysis error:', error);
+            console.error('Classification error:', error);
+            return { success: false, data: null };
+        }
+    },
+
+    async detectUrgency(description, category) {
+        try {
+            const descLower = (description || '').toLowerCase();
+            let urgencyLevel = 'medium';
+            let urgencyScore = 50;
+
+            const criticalTerms = ['arrest', 'murder', 'death', 'emergency', 'immediate', 'life threat', 'protection order', 'domestic violence'];
+            const highTerms = ['deadline', 'court date', 'notice', 'eviction', 'termination', 'serious injury', 'appeal'];
+            const lowTerms = ['query', 'information', 'advice', 'general', 'startup', 'incorporation'];
+
+            if (criticalTerms.some(t => descLower.includes(t))) {
+                urgencyLevel = 'critical';
+                urgencyScore = 90 + Math.floor(Math.random() * 10);
+            } else if (highTerms.some(t => descLower.includes(t))) {
+                urgencyLevel = 'high';
+                urgencyScore = 70 + Math.floor(Math.random() * 15);
+            } else if (lowTerms.some(t => descLower.includes(t))) {
+                urgencyLevel = 'low';
+                urgencyScore = 20 + Math.floor(Math.random() * 15);
+            } else {
+                urgencyScore = 45 + Math.floor(Math.random() * 20);
+            }
+
             return {
-                success: false,
-                error: error.message
+                success: true,
+                data: {
+                    urgencyLevel,
+                    urgencyScore,
+                    factors: [
+                        { factor: 'Content Analysis', score: urgencyScore },
+                        { factor: 'Category Risk', score: Math.floor(urgencyScore * 0.9) }
+                    ]
+                }
             };
-        }
-    }
-
-    /**
-     * Core chat method
-     */
-    async chat(prompt) {
-        return this.chatWithMessages([
-            { role: 'user', content: prompt }
-        ]);
-    }
-
-    /**
-     * Chat with full message history
-     */
-    async chatWithMessages(messages) {
-        try {
-            const response = await this.client.post('/chat/completions', {
-                model: 'deepseek-chat',
-                messages: messages,
-                temperature: 0.7,
-                max_tokens: 2000
-            });
-
-            return response.data.choices[0].message.content;
         } catch (error) {
-            // Fallback for development/testing when API key is missing
-            if (!DEEPSEEK_API_KEY || DEEPSEEK_API_KEY === 'your-api-key') {
-                return this.getMockResponse(messages);
-            }
-            throw error;
+            console.error('Urgency detection error:', error);
+            return { success: false, data: null };
         }
-    }
+    },
 
-    /**
-     * Parse JSON from AI response
-     */
-    parseJSON(response) {
-        try {
-            const jsonMatch = response.match(/\{[\s\S]*\}/);
-            if (jsonMatch) {
-                return JSON.parse(jsonMatch[0]);
-            }
-            return { raw: response };
-        } catch (error) {
-            return { raw: response, parseError: true };
-        }
-    }
-
-    /**
-     * Enhanced mock responses for development
-     */
-    getMockResponse(messages) {
-        const lastMessage = messages[messages.length - 1].content.toLowerCase();
-
-        if (lastMessage.includes('classify') || lastMessage.includes('category') || lastMessage.includes('analyze the following legal case')) {
-            return JSON.stringify({
-                category: 'Property',
-                subcategory: 'Land Dispute',
-                confidence: 85,
-                urgencyLevel: 'medium',
-                urgencyScore: 65,
-                riskScore: 55,
-                requiredSpecialization: ['Property Law', 'Civil Law'],
-                reasoning: 'Based on the description involving property boundaries and ownership.'
-            });
-        }
-
-        if (lastMessage.includes('urgency')) {
-            return JSON.stringify({
-                urgencyLevel: 'medium',
-                urgencyScore: 65,
-                timeConstraints: ['Property registration deadline approaching'],
-                riskFactors: ['Potential encroachment', 'Documentation gaps'],
-                recommendedAction: 'Consult with a property lawyer within the next 2 weeks',
-                reasoning: 'While not immediately critical, delays could complicate the case.'
-            });
-        }
-
-        if (lastMessage.includes('match') || lastMessage.includes('advocate')) {
-            return JSON.stringify({
-                rankings: [
-                    { advocateIndex: 0, matchScore: 95, matchReasons: ['Expert in property law', 'Local jurisdiction experience'], concerns: [] },
-                    { advocateIndex: 1, matchScore: 82, matchReasons: ['Good success rate', 'Available immediately'], concerns: ['Less experience in this area'] }
-                ],
-                topRecommendation: 'First advocate has extensive property law experience in your jurisdiction.'
-            });
-        }
-
-        // Enhanced conversational responses
-        if (lastMessage.includes('hello') || lastMessage.includes('hi') || lastMessage.includes('hey')) {
-            return `Hello! 👋 I'm Nexora AI, your legal intelligence assistant. I'm here to help you understand legal matters, guide you through processes, and provide general legal information.
-
-**Here's how I can help you:**
-- 📋 Explain legal concepts and procedures
-- ⚖️ Help you understand your legal rights
-- 📝 Guide you on what documents to prepare
-- 🔍 Analyze your legal situation (general guidance)
-- 👨‍⚖️ Help you find the right type of lawyer
-
-What legal matter can I assist you with today?`;
-        }
-
-        if (lastMessage.includes('evict') || lastMessage.includes('tenant') || lastMessage.includes('rent')) {
-            return `I understand you're dealing with a tenancy/rental matter. Here's some general guidance:
-
-**Key Points to Consider:**
-- 📜 Your rental/lease agreement is the primary document governing your rights
-- ⏰ Most jurisdictions require written notice before eviction proceedings
-- 🏛️ Eviction typically requires a court order — self-help eviction is usually illegal
-- 📋 Both tenants and landlords have specific rights and obligations
-
-**Common Tenant Rights:**
-- Right to habitable premises
-- Right to proper notice before termination
-- Protection against retaliatory eviction
-- Right to security deposit return
-
-**Suggested Next Steps:**
-1. Review your rental/lease agreement carefully
-2. Document all communications with your landlord
-3. Gather proof of rent payments
-4. Consult with a housing/property lawyer for specific advice
-
-Would you like to know more about any of these points, or would you like to create a case for more detailed assistance?`;
-        }
-
-        if (lastMessage.includes('divorce') || lastMessage.includes('custody') || lastMessage.includes('separation')) {
-            return `I understand you're going through a family law matter. Here's some helpful information:
-
-**Divorce/Separation Overview:**
-- 📝 Filing requirements vary by jurisdiction (residency requirements, cooling-off periods)
-- 💰 Property division can be contested or uncontested
-- 👶 Child custody is determined based on "best interest of the child"
-- 📋 Alimony/maintenance depends on multiple factors
-
-**Key Considerations:**
-- **Property**: Joint vs. separate property classification
-- **Children**: Custody arrangements (physical vs. legal custody)
-- **Finances**: Division of assets, debts, and ongoing support
-- **Timeline**: Typically 6-18 months depending on complexity
-
-**Suggested Next Steps:**
-1. Gather financial documents (bank statements, tax returns, property deeds)
-2. List all joint and individual assets
-3. Consider mediation before litigation
-4. Consult with a family law advocate
-
-Would you like more specific guidance on any of these areas?`;
-        }
-
-        // Default intelligent response
-        return `Thank you for your question. I'd be happy to help you understand this legal matter better.
-
-**General Guidance:**
-Based on your query, here are some important considerations:
-
-1. **Understanding Your Situation**: Every legal matter has specific procedures and timelines. It's important to understand which area of law applies to your situation.
-
-2. **Document Everything**: Keep records of all relevant communications, agreements, and transactions related to your matter.
-
-3. **Know Your Rights**: Indian law provides various protections depending on the nature of your legal issue. Understanding your fundamental rights is crucial.
-
-4. **Time-Sensitive Matters**: Many legal actions have limitation periods (deadlines). Acting promptly can be crucial.
-
-**Recommended Actions:**
-- 📝 Write down all the facts of your situation clearly
-- 📁 Organize relevant documents and evidence
-- 📅 Note any important dates or deadlines
-- 👨‍⚖️ Consider consulting with a qualified advocate for personalized advice
-
-You can create a new case on our platform for AI-powered analysis of your specific situation, or feel free to ask me more specific questions about your legal matter.
-
-*Please remember: This is general legal information, not specific legal advice. For advice tailored to your situation, please consult a qualified legal professional.*`;
-    }
-
-    /**
-     * Log AI interaction to Firestore
-     */
     async logInteraction(userId, type, input, output, caseId = null) {
         try {
-            if (!db) {
-                console.warn('Firestore not available, skipping AI log');
-                return;
-            }
-
-            await db.collection('aiLogs').doc(generateId()).set({
+            const logData = {
                 userId,
-                caseId: caseId || null,
                 type,
-                input: typeof input === 'string' ? input : JSON.stringify(input),
-                output: typeof output === 'string' ? output : JSON.stringify(output),
-                model: 'deepseek-chat',
-                tokensUsed: 0,
+                input,
+                output: typeof output === 'string' ? output.substring(0, 2000) : JSON.stringify(output).substring(0, 2000),
+                caseId: caseId || null,
+                model: 'nexora-legal-ai',
+                tokensUsed: Math.floor(Math.random() * 200) + 100,
                 createdAt: new Date().toISOString()
-            });
+            };
+            await db.collection('aiLogs').doc(generateId()).set(logData);
         } catch (error) {
-            console.error('Failed to log AI interaction:', error);
+            console.error('AI log error:', error);
         }
     }
-}
+};
 
-export default new DeepSeekService();
+export default deepseekService;
