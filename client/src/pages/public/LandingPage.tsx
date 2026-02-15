@@ -113,7 +113,6 @@ export function LandingPage() {
             <nav className="landing-nav">
                 <div className="container">
                     <Link to="/" className="nav-logo">
-                        <img src="/logo.svg" alt="Nexora" className="logo-img" style={{ height: '32px' }} />
                         <span className="logo-text">Nexora</span>
                     </Link>
 
@@ -390,8 +389,7 @@ export function LandingPage() {
                     <div className="footer-grid">
                         <div className="footer-brand">
                             <Link to="/" className="footer-logo">
-                                <img src="/logo.svg" alt="Nexora" className="logo-img" style={{ height: '32px' }} />
-                                <span>Nexora</span>
+                                <span className="logo-text">Nexora</span>
                             </Link>
                             <p>AI-powered legal intelligence platform connecting clients with verified advocates.</p>
                             <div className="footer-social">

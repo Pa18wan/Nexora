@@ -56,7 +56,6 @@ export function LoginPage() {
 
             <header className="auth-header">
                 <Link to="/" className="auth-logo">
-                    <img src="/logo.svg" alt="Nexora" className="logo-img" style={{ height: '32px' }} />
                     <span>Nexora</span>
                 </Link>
                 <ThemeToggle />

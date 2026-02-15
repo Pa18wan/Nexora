@@ -206,9 +206,10 @@ function findBestResponse(message, caseContext) {
             return `You're welcome! 😊 I'm glad I could help.\n\nIf you have any more legal questions, feel free to ask. For personalized legal advice, you can also:\n\n- 📋 **Submit a case** for detailed AI analysis\n- ⚖️ **Find an advocate** matching your legal needs\n- 📞 **Book a consultation** with a verified lawyer\n\nStay informed, stay protected! 🛡️`;
         }
 
-        // Generic legal query response
-        const generalResponses = legalKnowledge['general'].responses;
-        bestMatch = generalResponses[Math.floor(Math.random() * generalResponses.length)].a;
+        // Generic fallback if no specific legal domain matches
+        if (!bestMatch) {
+            bestMatch = "I apologize, but I couldn't find specific legal information matching your query. \n\nI can help you with:\n- Property Disputes\n- Criminal Law\n- Family & Divorce\n- Consumer Complaints\n- Tax Notices\n- Cyber Crime\n\nPlease try asking about one of these topics, or consult a verified advocate on our platform for personalized advice.";
+        }
     }
 
     return bestMatch;
@@ -245,7 +246,7 @@ const deepseekService = {
 
             // Don't add starter for greetings/thanks
             const isGreeting = /^(hi|hello|hey|good|thank|thanks|namaste)/i.test(message.trim());
-            const fullResponse = isGreeting ? response + disclaimer : `${starter}\n\n${response}${disclaimer}`;
+            const fullResponse = isGreeting ? response : `${starter}\n\n${response}${disclaimer}`;
 
             return {
                 success: true,

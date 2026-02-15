@@ -87,8 +87,9 @@ export function DashboardLayout() {
             <aside className="dashboard-sidebar">
                 <div className="sidebar-header">
                     <Link to="/" className="sidebar-logo">
-                        <img src="/logo.svg" alt="Nexora" className="logo-img" style={{ height: '32px', width: 'auto' }} />
-                        {sidebarOpen && <span className="logo-text">Nexora</span>}
+                        <span className="logo-text" style={{ fontSize: sidebarOpen ? '1.5rem' : '1.5rem', fontWeight: 'bold', background: 'linear-gradient(to right, #4f46e5, #06b6d4)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                            {sidebarOpen ? 'Nexora' : 'N'}
+                        </span>
                     </Link>
                     <button className="sidebar-toggle" onClick={() => setSidebarOpen(!sidebarOpen)}>
                         {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
