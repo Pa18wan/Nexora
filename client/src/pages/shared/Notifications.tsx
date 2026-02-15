@@ -12,7 +12,7 @@ interface Notification {
     type: string;
     title: string;
     message: string;
-    read: boolean;
+    isRead: boolean;
     createdAt: string;
     data?: any;
 }
@@ -45,7 +45,7 @@ export function Notifications() {
             const response = await notificationsAPI.markAsRead(id);
             if (response.data.success) {
                 setNotifications(prev =>
-                    prev.map(n => n._id === id ? { ...n, read: true } : n)
+                    prev.map(n => n._id === id ? { ...n, isRead: true } : n)
                 );
             }
         } catch (error) {
@@ -57,7 +57,7 @@ export function Notifications() {
         try {
             const response = await notificationsAPI.markAllAsRead();
             if (response.data.success) {
-                setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+                setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
             }
         } catch (error) {
             console.error('Failed to mark all as read:', error);
@@ -75,7 +75,7 @@ export function Notifications() {
     };
 
     const filteredNotifications = activeFilter === 'unread'
-        ? notifications.filter(n => !n.read)
+        ? notifications.filter(n => !n.isRead)
         : notifications;
 
     return (
@@ -95,7 +95,7 @@ export function Notifications() {
                         variant="ghost"
                         size="sm"
                         onClick={handleMarkAllAsRead}
-                        disabled={!notifications.some(n => !n.read)}
+                        disabled={!notifications.some(n => !n.isRead)}
                     >
                         <Check size={16} />
                         Mark all as read
@@ -117,7 +117,7 @@ export function Notifications() {
                 >
                     Unread
                     <Badge variant="danger" className="tab-count">
-                        {notifications.filter(n => !n.read).length}
+                        {notifications.filter(n => !n.isRead).length}
                     </Badge>
                 </button>
             </div>
@@ -136,8 +136,8 @@ export function Notifications() {
                         <GlassCard
                             key={notification._id}
                             variant="liquid"
-                            className={`notification-item ${!notification.read ? 'unread' : ''}`}
-                            onClick={() => !notification.read && handleMarkAsRead(notification._id)}
+                            className={`notification-item ${!notification.isRead ? 'unread' : ''}`}
+                            onClick={() => !notification.isRead && handleMarkAsRead(notification._id)}
                         >
                             <div className="notification-icon">
                                 {getIcon(notification.type)}
@@ -152,7 +152,7 @@ export function Notifications() {
                                 </div>
                                 <p>{notification.message}</p>
                             </div>
-                            {!notification.read && (
+                            {!notification.isRead && (
                                 <div className="unread-dot" />
                             )}
                         </GlassCard>

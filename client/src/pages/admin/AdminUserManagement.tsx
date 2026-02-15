@@ -12,10 +12,18 @@ interface User {
     name: string;
     email: string;
     role: 'client' | 'advocate' | 'admin';
-    status: 'active' | 'suspended' | 'pending';
+    isActive?: boolean;
+    isVerified?: boolean;
     createdAt: string;
     lastLogin?: string;
 }
+
+// Derive display status from Firebase fields
+const getUserStatus = (user: User): 'active' | 'suspended' | 'pending' => {
+    if (!user.isActive) return 'suspended';
+    if (!user.isVerified) return 'pending';
+    return 'active';
+};
 
 export function AdminUserManagement() {
     const [users, setUsers] = useState<User[]>([]);
@@ -54,7 +62,7 @@ export function AdminUserManagement() {
             if (response.data.success) {
                 setUsers(prev => prev.map(u =>
                     u._id === userId
-                        ? { ...u, status: action === 'suspend' ? 'suspended' : 'active' }
+                        ? { ...u, isActive: action === 'activate', isVerified: action === 'activate' ? true : u.isVerified }
                         : u
                 ));
             }
@@ -165,21 +173,26 @@ export function AdminUserManagement() {
                                             </div>
                                         </td>
                                         <td>
-                                            <Badge
-                                                variant={user.status === 'active' ? 'success' : user.status === 'suspended' ? 'danger' : 'warning'}
-                                            >
-                                                {user.status}
-                                            </Badge>
+                                            {(() => {
+                                                const status = getUserStatus(user);
+                                                return (
+                                                    <Badge
+                                                        variant={status === 'active' ? 'success' : status === 'suspended' ? 'danger' : 'warning'}
+                                                    >
+                                                        {status.toUpperCase()}
+                                                    </Badge>
+                                                );
+                                            })()}
                                         </td>
                                         <td className="text-right">
                                             <div className="action-buttons">
                                                 <Button
                                                     variant="ghost"
                                                     size="sm"
-                                                    onClick={() => handleUpdateStatus(user._id, user.status)}
-                                                    title={user.status === 'active' ? 'Suspend' : 'Activate'}
+                                                    onClick={() => handleUpdateStatus(user._id, getUserStatus(user))}
+                                                    title={getUserStatus(user) === 'active' ? 'Suspend' : 'Activate'}
                                                 >
-                                                    {user.status === 'active' ? <UserX size={18} /> : <UserCheck size={18} />}
+                                                    {getUserStatus(user) === 'active' ? <UserX size={18} /> : <UserCheck size={18} />}
                                                 </Button>
                                                 <Button variant="ghost" size="sm" title="View Details">
                                                     <MoreVertical size={18} />

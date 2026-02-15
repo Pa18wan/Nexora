@@ -15,35 +15,43 @@ interface CaseData {
     title: string;
     description: string;
     category: string;
-    location: string;
+    location?: any;
     status: string;
-    priority: 'urgent' | 'high' | 'normal' | 'low';
+    urgencyLevel?: string;
     clientNotes?: string;
+    clientId?: string;
+    advocateId?: string;
     aiAnalysis?: {
-        urgencyLevel: string;
-        riskScore: number;
-        summary: string;
+        urgencyLevel?: string;
+        urgencyScore?: number;
+        riskScore?: number;
+        summary?: string;
+        classification?: any;
     };
-    clientId: {
+    client?: {
         _id: string;
         name: string;
         email: string;
         phone?: string;
     };
-    advocateId?: {
-        userId: {
+    advocate?: {
+        _id: string;
+        specialization?: string[];
+        user?: {
+            _id: string;
             name: string;
             email: string;
         };
-        specialization: string[];
     };
-    timeline: {
+    timeline?: {
         event: string;
-        description: string;
-        date: string;
-        createdBy?: {
-            name: string;
-        };
+        description?: string;
+        notes?: string;
+        status?: string;
+        date?: string;
+        timestamp?: string;
+        createdAt?: string;
+        createdBy?: any;
     }[];
     createdAt: string;
 }
@@ -133,12 +141,21 @@ export function CaseDetails() {
             'submitted': 'default',
             'analyzing': 'info',
             'pending_advocate': 'warning',
+            'pending_acceptance': 'warning',
             'advocate_assigned': 'primary',
+            'assigned': 'primary',
             'in_progress': 'info',
+            'in_review': 'info',
             'resolved': 'success',
+            'completed': 'success',
             'closed': 'secondary'
         };
         return colors[status] || 'default';
+    };
+
+    const getPriorityFromUrgency = (urgency?: string) => {
+        if (!urgency) return 'medium';
+        return urgency;
     };
 
     if (isLoading) {
@@ -158,6 +175,12 @@ export function CaseDetails() {
 
     const isAdvocate = user?.role === 'advocate';
     const canUpdateStatus = isAdvocate || user?.role === 'admin';
+    const urgency = getPriorityFromUrgency(caseData.urgencyLevel || caseData.aiAnalysis?.urgencyLevel);
+    const locationStr = typeof caseData.location === 'string'
+        ? caseData.location
+        : caseData.location?.city
+            ? `${caseData.location.city}${caseData.location.state ? ', ' + caseData.location.state : ''}`
+            : 'Not specified';
 
     return (
         <div className="case-details-page">
@@ -196,7 +219,7 @@ export function CaseDetails() {
                     <div className="title-row">
                         <h1>{caseData.title}</h1>
                         <Badge variant={getStatusColor(caseData.status)} size="md">
-                            {caseData.status.replace('_', ' ').toUpperCase()}
+                            {caseData.status.replace(/_/g, ' ').toUpperCase()}
                         </Badge>
                     </div>
                     <div className="meta-row">
@@ -207,8 +230,8 @@ export function CaseDetails() {
                             {new Date(caseData.createdAt).toLocaleDateString()}
                         </span>
                         <span className="dot">•</span>
-                        <Badge variant={caseData.priority === 'urgent' ? 'danger' : 'info'} size="sm">
-                            {caseData.priority.toUpperCase()} PRIORITY
+                        <Badge variant={['critical', 'high'].includes(urgency) ? 'danger' : 'info'} size="sm">
+                            {urgency.toUpperCase()} PRIORITY
                         </Badge>
                     </div>
                 </div>
@@ -227,7 +250,7 @@ export function CaseDetails() {
                             </div>
                             <div className="info-item">
                                 <label>Location</label>
-                                <span>{caseData.location}</span>
+                                <span>{locationStr}</span>
                             </div>
                             <div className="info-item full-width">
                                 <label>Description</label>
@@ -243,7 +266,7 @@ export function CaseDetails() {
                     </GlassCard>
 
                     {/* AI Analysis */}
-                    {caseData.aiAnalysis && (
+                    {caseData.aiAnalysis && Object.keys(caseData.aiAnalysis).length > 0 && (
                         <GlassCard className="detail-card ai-analysis">
                             <div className="card-header-icon">
                                 <Activity size={20} />
@@ -252,19 +275,20 @@ export function CaseDetails() {
                             <div className="analysis-content">
                                 <div className="score-row">
                                     <div className="score-item">
-                                        <label>Urgency Score</label>
-                                        <span className={`score ${caseData.aiAnalysis.urgencyLevel}`}>
-                                            {caseData.aiAnalysis.urgencyLevel.toUpperCase()}
+                                        <label>Urgency Level</label>
+                                        <span className={`score ${caseData.aiAnalysis.urgencyLevel || 'medium'}`}>
+                                            {(caseData.aiAnalysis.urgencyLevel || 'MEDIUM').toUpperCase()}
                                         </span>
                                     </div>
-                                    <div className="score-item">
-                                        <label>Risk Assessment</label>
-                                        <span className="score">
-                                            {caseData.aiAnalysis.riskScore}/10
-                                        </span>
-                                    </div>
+                                    {caseData.aiAnalysis.urgencyScore !== undefined && (
+                                        <div className="score-item">
+                                            <label>Urgency Score</label>
+                                            <span className="score">
+                                                {caseData.aiAnalysis.urgencyScore}/100
+                                            </span>
+                                        </div>
+                                    )}
                                 </div>
-                                {/* AI Summary would go here if available in backend model */}
                             </div>
                         </GlassCard>
                     )}
@@ -310,28 +334,35 @@ export function CaseDetails() {
                         <div className="people-list">
                             <div className="person-item">
                                 <div className="person-role">Client</div>
-                                <div className="person-info">
-                                    <div className="avatar">{caseData.clientId.name[0]}</div>
-                                    <div>
-                                        <div className="name">{caseData.clientId.name}</div>
-                                        <div className="email">{caseData.clientId.email}</div>
+                                {caseData.client ? (
+                                    <div className="person-info">
+                                        <div className="avatar">{caseData.client.name[0]}</div>
+                                        <div>
+                                            <div className="name">{caseData.client.name}</div>
+                                            <div className="email">{caseData.client.email}</div>
+                                        </div>
                                     </div>
-                                </div>
+                                ) : (
+                                    <div className="empty-assignee">
+                                        <User size={16} />
+                                        <span>Client info unavailable</span>
+                                    </div>
+                                )}
                             </div>
 
                             <div className="divider"></div>
 
                             <div className="person-item">
                                 <div className="person-role">Assigned Advocate</div>
-                                {caseData.advocateId ? (
+                                {caseData.advocate ? (
                                     <div className="person-info">
                                         <div className="avatar advocate">
                                             <Shield size={16} />
                                         </div>
                                         <div>
-                                            <div className="name">{caseData.advocateId.userId.name}</div>
+                                            <div className="name">{caseData.advocate.user?.name || 'Advocate'}</div>
                                             <div className="specialization">
-                                                {caseData.advocateId.specialization[0]}
+                                                {caseData.advocate.specialization?.[0] || 'Legal Professional'}
                                             </div>
                                         </div>
                                     </div>
@@ -353,15 +384,21 @@ export function CaseDetails() {
                                 <div key={index} className="timeline-item">
                                     <div className="timeline-dot"></div>
                                     <div className="timeline-content">
-                                        <div className="event-name">{event.event}</div>
-                                        <div className="event-desc">{event.description}</div>
+                                        <div className="event-name">{event.event || event.status || 'Update'}</div>
+                                        <div className="event-desc">{event.description || event.notes || ''}</div>
                                         <div className="event-time">
                                             <Clock size={12} />
-                                            {typeof event.date === 'string' ? new Date(event.date).toLocaleString() : 'Just now'}
+                                            {(() => {
+                                                const d = event.date || event.timestamp || event.createdAt;
+                                                return d ? new Date(d).toLocaleString() : 'Just now';
+                                            })()}
                                         </div>
                                     </div>
                                 </div>
                             ))}
+                            {(!caseData.timeline || caseData.timeline.length === 0) && (
+                                <p className="empty-text">No timeline events yet</p>
+                            )}
                         </div>
                     </GlassCard>
                 </div>
@@ -369,3 +406,4 @@ export function CaseDetails() {
         </div>
     );
 }
+

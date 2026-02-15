@@ -129,7 +129,7 @@ export function CaseList() {
                                         <Clock size={14} />
                                         <span>{formatDate(caseItem.createdAt)}</span>
                                     </div>
-                                    {caseItem.location?.city && (
+                                    {caseItem.location && typeof caseItem.location === 'object' && caseItem.location.city && (
                                         <div className="meta-item">
                                             <MapPin size={14} />
                                             <span>{caseItem.location.city}</span>

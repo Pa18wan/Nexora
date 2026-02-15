@@ -69,7 +69,7 @@ export function AdvocateSearch() {
     // Client-side search only if server-side search isn't active
     const displayAdvocates = searchTerm.length > 0 && searchTerm.length < 3
         ? advocates.filter(a =>
-            a.userId?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (a.user?.name || a.userName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
             a.specialization.some(s => s.toLowerCase().includes(searchTerm.toLowerCase()))
         )
         : advocates;
@@ -147,16 +147,16 @@ export function AdvocateSearch() {
                         <GlassCard key={advocate._id} variant="liquid" hover className="advocate-card">
                             <div className="advocate-header">
                                 <div className="advocate-avatar">
-                                    {advocate.userId?.name?.charAt(0) || 'A'}
+                                    {(advocate.user?.name || advocate.userName || 'A').charAt(0)}
                                 </div>
                                 <div className="advocate-info">
-                                    <h3>{advocate.userId?.name || 'Advocate'}</h3>
+                                    <h3>{advocate.user?.name || advocate.userName || 'Advocate'}</h3>
                                     <div className="advocate-location">
                                         <MapPin size={14} />
-                                        <span>{advocate.officeAddress?.city}, {advocate.officeAddress?.state}</span>
+                                        <span>{advocate.officeAddress?.city || advocate.location?.city || 'India'}, {advocate.officeAddress?.state || advocate.location?.state || ''}</span>
                                     </div>
                                 </div>
-                                {advocate.verificationStatus === 'verified' && (
+                                {(advocate.verificationStatus === 'verified' || advocate.isVerified) && (
                                     <CheckCircle size={20} className="verified-badge" />
                                 )}
                             </div>
@@ -199,7 +199,7 @@ export function AdvocateSearch() {
                             <div className="advocate-footer">
                                 <div className="fee-info">
                                     <span className="fee-label">Consultation</span>
-                                    <span className="fee-value">₹{advocate.consultationFee}</span>
+                                    <span className="fee-value">₹{advocate.consultationFee || advocate.feeRange?.min || 'N/A'}</span>
                                 </div>
                                 <Link to={`/dashboard/advocates/${advocate._id}`}>
                                     <Button size="sm">View Profile</Button>

@@ -12,32 +12,41 @@ export interface User {
 // Advocate Types
 export interface Advocate {
     _id: string;
-    userId: User;
+    userId: User | string;
     barCouncilId: string;
     specialization: string[];
     experienceYears: number;
-    education: { degree: string; institution: string; year: number }[];
-    certifications: { name: string; issuedBy: string; year: number }[];
-    courtsPracticed: string[];
-    languages: string[];
-    successRate: number;
-    totalCases: number;
-    casesWon: number;
-    rating: number;
-    totalReviews: number;
-    consultationFee: number;
-    availability: Record<string, { start: string; end: string; available: boolean }>;
-    officeAddress: {
+    education?: { degree: string; institution?: string; university?: string; year: number }[];
+    certifications?: { name: string; issuedBy: string; year: number }[];
+    courtsPracticed?: string[];
+    languages?: string[];
+    successRate?: number;
+    totalCases?: number;
+    casesWon?: number;
+    rating?: number;
+    totalReviews?: number;
+    consultationFee?: number;
+    feeRange?: { min: number; max: number };
+    availability?: Record<string, { start: string; end: string; available: boolean }>;
+    officeAddress?: {
         street?: string;
-        city: string;
-        state: string;
+        city?: string;
+        state?: string;
         pincode?: string;
-        country: string;
+        country?: string;
+        address?: string;
     };
-    verificationStatus: 'pending' | 'verified' | 'rejected';
-    isProfileComplete: boolean;
-    isAcceptingCases: boolean;
+    location?: { city?: string; state?: string };
+    verificationStatus?: 'pending' | 'verified' | 'rejected';
+    isVerified?: boolean;
+    isActive?: boolean;
+    isProfileComplete?: boolean;
+    isAcceptingCases?: boolean;
     bio?: string;
+    awards?: string[];
+    userName?: string;
+    userEmail?: string;
+    user?: { _id: string; name: string; email: string };
 }
 
 // Case Types
@@ -69,31 +78,36 @@ export interface RecommendedAdvocate {
 
 export interface Case {
     _id: string;
-    clientId: User;
-    advocateId?: Advocate;
-    caseNumber: string;
+    clientId: User | string;
+    advocateId?: Advocate | string;
+    caseNumber?: string;
     title: string;
     description: string;
     category: string;
     subcategory?: string;
-    location: {
-        city: string;
-        state: string;
-        country: string;
-    };
-    aiAnalysis: AIAnalysis;
-    status: 'submitted' | 'analyzing' | 'pending_advocate' | 'advocate_assigned' |
-    'in_progress' | 'on_hold' | 'resolved' | 'closed' | 'withdrawn';
-    priority: 'low' | 'normal' | 'high' | 'urgent';
-    timeline: TimelineEvent[];
+    location?: {
+        city?: string;
+        state?: string;
+        country?: string;
+    } | string;
+    aiAnalysis?: AIAnalysis | any;
+    status: string;
+    urgencyLevel?: string;
+    priority?: 'low' | 'normal' | 'high' | 'urgent';
+    timeline?: TimelineEvent[];
     nextHearingDate?: string;
     filingDate?: string;
     closedDate?: string;
     clientNotes?: string;
-    recommendedAdvocates: RecommendedAdvocate[];
+    recommendedAdvocates?: RecommendedAdvocate[];
     estimatedCost?: number;
     actualCost?: number;
-    paymentStatus: 'pending' | 'partial' | 'paid' | 'refunded';
+    paymentStatus?: 'pending' | 'partial' | 'paid' | 'refunded';
+    // Enriched fields from Firebase backend
+    clientName?: string;
+    clientEmail?: string;
+    client?: { _id: string; name: string; email: string };
+    advocate?: any;
     createdAt: string;
     updatedAt: string;
 }
