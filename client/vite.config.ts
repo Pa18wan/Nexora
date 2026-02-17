@@ -11,5 +11,18 @@ export default defineConfig({
                 changeOrigin: true
             }
         }
+    },
+    build: {
+        chunkSizeWarningLimit: 1000,
+        rollupOptions: {
+            output: {
+                manualChunks: {
+                    vendor: ['react', 'react-dom', 'react-router-dom'],
+                    charts: ['chart.js', 'react-chartjs-2'],
+                    ui: ['lucide-react'],
+                    firebase: ['firebase']
+                }
+            }
+        }
     }
 })
