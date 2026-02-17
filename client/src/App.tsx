@@ -27,7 +27,6 @@ import { AdvocateCalendar } from './pages/advocate/AdvocateCalendar';
 // Admin Pages
 import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { AdminUserManagement } from './pages/admin/AdminUserManagement';
-import { AdminAILogs } from './pages/admin/AdminAILogs';
 import { AdminAdvocates } from './pages/admin/AdminAdvocates';
 import { AdminAnalytics } from './pages/admin/AdminAnalytics';
 import { AdminSettings } from './pages/admin/AdminSystemSettings';
@@ -35,7 +34,6 @@ import { AdminComplaints } from './pages/admin/AdminComplaints';
 
 // Shared Pages
 import { Notifications } from './pages/shared/Notifications';
-import { MyDocuments } from './pages/shared/MyDocuments';
 import { CaseDetails } from './pages/shared/CaseDetails';
 import { AdvocateProfile } from './pages/shared/AdvocateProfile';
 import { ProfileSettings } from './pages/shared/ProfileSettings';
@@ -67,7 +65,7 @@ export default function App() {
                             <Route path="recommendations" element={<AdvocateRecommendations />} />
                             <Route path="advocates" element={<AdvocateSearch />} />
                             <Route path="advocates/:id" element={<AdvocateProfile />} />
-                            <Route path="documents" element={<MyDocuments />} />
+
                             <Route path="chat" element={<AIChat />} />
                             <Route path="notifications" element={<Notifications />} />
                             <Route path="settings" element={<ProfileSettings />} />
@@ -82,7 +80,6 @@ export default function App() {
                             <Route index element={<AdvocateDashboard />} />
                             <Route path="cases" element={<CaseList />} />
                             <Route path="cases/:id" element={<CaseDetails />} />
-                            <Route path="documents" element={<MyDocuments />} />
                             <Route path="requests" element={<AdvocateRequests />} />
                             <Route path="analytics" element={<AdvocateAnalytics />} />
                             <Route path="calendar" element={<AdvocateCalendar />} />
@@ -102,7 +99,6 @@ export default function App() {
                             <Route path="cases" element={<CaseList />} />
                             <Route path="cases/:id" element={<CaseDetails />} />
                             <Route path="complaints" element={<AdminComplaints />} />
-                            <Route path="ai-logs" element={<AdminAILogs />} />
                             <Route path="analytics" element={<AdminAnalytics />} />
                             <Route path="settings" element={<AdminSettings />} />
                             <Route path="profile" element={<ProfileSettings />} />

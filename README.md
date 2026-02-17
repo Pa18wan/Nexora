@@ -14,7 +14,21 @@ Built with a focus on user experience, security, and efficiency, Nexora offers a
 
 ---
 
-## 🚀 Key Features
+## � Screenshots
+
+| Landing Page | Dashboard |
+|:---:|:---:|
+| ![Landing Page](screenshots/Screenshot%202026-02-17%20235112.png) | ![Dashboard](screenshots/Screenshot%202026-02-17%20235709.png) |
+
+| Advocate Analytics | Admin Panel |
+|:---:|:---:|
+| ![Advocate Analytics](screenshots/Screenshot%202026-02-18%20002828.png) | ![Admin Panel](screenshots/Screenshot%202026-02-17%20235231.png) |
+
+*More screenshots available in the `screenshots/` directory.*
+
+---
+
+## �🚀 Key Features
 
 ### 👥 For Clients
 - **AI Case Analysis**: Submit case details and receive an instant AI-generated summary, urgency classification, and recommended legal steps.
@@ -52,11 +66,11 @@ Built with a focus on user experience, security, and efficiency, Nexora offers a
 ### Backend (Server)
 - **Runtime**: Node.js (v18+)
 - **Framework**: Express.js
-- **Database**: MongoDB (Mongoose ODM)
-- **Authentication**: JSON Web Tokens (JWT) & bcryptjs
-- **File Uploads**: Multer
+- **Database**: Firebase Firestore (NoSQL)
+- **Authentication**: Firebase Admin SDK & Custom JWT
+- **Storage**: Firebase Storage (for documents)
 - **Security**: Helmet, Express-Rate-Limit, CORS
-- **AI Integration**: DeepSeek AI (via OpenAI-compatible API)
+- **AI Integration**: DeepSeek AI (Custom Rule-Based Engine)
 
 ---
 
@@ -67,7 +81,7 @@ Follow these steps to set up the project locally.
 ### Prerequisites
 - **Node.js**: v18.0.0 or higher
 - **npm**: v9.0.0 or higher
-- **MongoDB**: Installed locally or a MongoDB Atlas connection string
+- **Firebase Project**: Created in Firebase Console
 
 ### 1. Clone the Repository
 ```bash
@@ -82,17 +96,17 @@ cd server
 npm install
 ```
 
-Create a `.env` file in the `server` directory with the following variables:
+Create a `.env` file in the `server` directory with your Firebase service account details:
 ```env
 PORT=5000
-MONGODB_URI=mongodb://localhost:27017/legal_services
-JWT_SECRET=your_super_secret_jwt_key_change_this
 NODE_ENV=development
 CLIENT_URL=http://localhost:5173
+JWT_SECRET=your_super_secret_jwt_key
 
-# AI Configuration (DeepSeek or OpenAI Compatible)
-DEEPSEEK_API_KEY=your_deepseek_api_key
-DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
+# Firebase Configuration
+FIREBASE_PROJECT_ID=your-project-id
+FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n..."
+FIREBASE_CLIENT_EMAIL=firebase-adminsdk-xxx@your-project.iam.gserviceaccount.com
 ```
 
 (Optional) Seed the database with demo data:
@@ -124,43 +138,37 @@ npm run dev
 ## 🔐 Environment Variables
 
 ### Server (`server/.env`)
-| Variable | Description | Default |
-| :--- | :--- | :--- |
-| `PORT` | Port for the backend server | `5000` |
-| `MONGODB_URI` | Connection string for MongoDB | `mongodb://localhost:27017/legal_services` |
-| `JWT_SECRET` | Secret key for signing JWT tokens | `secret` |
-| `NODE_ENV` | Environment (development/production) | `development` |
-| `CLIENT_URL` | URL of the frontend application | `http://localhost:5173` |
-| `DEEPSEEK_API_KEY` | API Key for AI services | - |
+| Variable | Description |
+| :--- | :--- |
+| `PORT` | Port for the backend server (Default: 5000) |
+| `FIREBASE_PROJECT_ID` | Firebase Project ID |
+| `FIREBASE_PRIVATE_KEY` | Firebase Service Account Private Key |
+| `FIREBASE_CLIENT_EMAIL` | Firebase Service Account Email |
+| `JWT_SECRET` | Secret key for signing JWT tokens |
+| `CLIENT_URL` | Frontend URL for CORS |
 
 ---
 
 ## 📚 API Documentation
 
 ### Authentication
-- `POST /api/auth/register` - Register a new user (client/advocate)
+- `POST /api/auth/register` - Register a new user
 - `POST /api/auth/login` - Login user
 - `GET /api/auth/me` - Get current user profile
 
-### Advocates
-- `GET /api/advocates` - Search for advocates with filters
-- `GET /api/advocates/:id` - Get public profile of an advocate
-- `GET /api/advocates/top-rated` - Get top-rated advocates
+### Advocates (Admin & Client)
+- `GET /api/admin/advocates` - Get all advocates (Admin)
+- `GET /api/advocates` - Search public advocates
+- `GET /api/advocates/:id` - Get profile
 
 ### Cases
-- `POST /api/cases` - Create a new case
-- `GET /api/cases` - Get all cases for the logged-in user
-- `GET /api/cases/:id` - Get case details
-- `PUT /api/cases/:id/status` - Update case status (Advocate only)
+- `POST /api/client/cases` - Submit a new case
+- `GET /api/client/cases` - Get client cases
+- `POST /api/documents/cases/:id/upload` - Upload documents
 
 ### AI Services
-- `POST /api/ai/analyze-case` - Analyze case details using AI
-- `POST /api/ai/chat` - Chat with the AI legal assistant
-
-### Admin
-- `GET /api/admin/dashboard` - Get admin dashboard stats
-- `GET /api/admin/users` - Manage all users
-- `PUT /api/admin/verify-advocate/:id` - Verify advocate credentials
+- `POST /api/ai/chat` - Chat with legal assistant
+- `GET /api/ai/logs` - View AI interaction history
 
 ---
 
@@ -169,37 +177,19 @@ npm run dev
 ```
 AIBasedLegalServicesPlatform/
 ├── client/                 # Frontend Application
-│   ├── public/             
 │   ├── src/
-│   │   ├── assets/         # Images, fonts, static assets
-│   │   ├── components/     # Reusable UI components (Buttons, Cards, Modals)
-│   │   ├── context/        # React Context (Auth, Theme)
-│   │   ├── hooks/          # Custom React hooks
-│   │   ├── layouts/        # Page layouts (Dashboard, Landing)
-│   │   ├── pages/          # Application views
-│   │   │   ├── admin/      # Admin-specific pages
-│   │   │   ├── advocate/   # Advocate-specific pages
-│   │   │   ├── client/     # Client-specific pages
-│   │   │   └── auth/       # Login/Register pages
-│   │   ├── services/       # API service functions
-│   │   ├── types/          # TypeScript interfaces
-│   │   ├── utils/          # Helper functions
-│   │   ├── App.tsx         # Main App component
-│   │   └── main.tsx        # Entry point
-│   ├── index.html
-│   └── vite.config.ts
+│   │   ├── components/     # Reusable UI components
+│   │   ├── pages/          # Application views (Admin, Advocate, Client)
+│   │   ├── services/       # API integration
+│   │   └── ...
 │
 ├── server/                 # Backend Application
-│   ├── config/             # Database & app configuration
-│   ├── controllers/        # Request handlers
-│   ├── middleware/         # Auth, Error handling, Validation
-│   ├── models/             # Mongoose schemas
-│   ├── routes/             # API route definitions
-│   ├── services/           # External services (AI integration)
-│   ├── utils/              # Utility functions
-│   ├── uploads/            # Directory for uploaded documents
-│   ├── server.js           # Server entry point
-│   └── seeder.js           # Database seeding script
+│   ├── config/             # Firebase configuration
+│   ├── controllers/        # Request handlers (Firestore logic)
+│   ├── routes/             # API routes
+│   ├── services/           # Helper services (DeepSeek, etc.)
+│   ├── firebase-seeder.js  # Database seeder
+│   └── server.js           # Server entry point
 │
 └── README.md               # Project documentation
 ```

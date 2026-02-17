@@ -15,16 +15,17 @@ router.get('/', protect, async (req, res) => {
             const snap = await db.collection('notifications')
                 .where('userId', '==', req.user._id)
                 .where('isRead', '==', false)
-                .orderBy('createdAt', 'desc')
                 .get();
             allNotifs = queryToArray(snap);
         } else {
             const snap = await db.collection('notifications')
                 .where('userId', '==', req.user._id)
-                .orderBy('createdAt', 'desc')
                 .get();
             allNotifs = queryToArray(snap);
         }
+
+        // Sort in memory to avoid Firestore index requirement
+        allNotifs.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
         const unreadSnap = await db.collection('notifications')
             .where('userId', '==', req.user._id)

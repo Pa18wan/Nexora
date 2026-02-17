@@ -202,6 +202,43 @@ export const getPendingAdvocates = async (req, res) => {
 };
 
 /**
+ * Get All Advocates (Admin)
+ */
+export const getAllAdvocates = async (req, res) => {
+    try {
+        const { isVerified } = req.query;
+
+        let query = db.collection('advocates');
+        if (isVerified !== undefined) {
+            query = query.where('isVerified', '==', isVerified === 'true');
+        }
+
+        const advSnap = await query.get();
+        let advocates = queryToArray(advSnap);
+
+        // Enrich with user data
+        for (let adv of advocates) {
+            if (adv.userId) {
+                const uDoc = await db.collection('users').doc(adv.userId).get();
+                if (uDoc.exists) {
+                    const { password, ...userData } = uDoc.data();
+                    adv.userId = { _id: adv.userId, ...userData };
+                }
+            }
+        }
+
+        res.json({
+            success: true,
+            data: { advocates }
+        });
+
+    } catch (error) {
+        console.error('Get all advocates error:', error);
+        res.status(500).json({ success: false, error: 'Failed to fetch advocates' });
+    }
+};
+
+/**
  * Verify Advocate
  */
 export const verifyAdvocate = async (req, res) => {

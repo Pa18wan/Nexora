@@ -31,11 +31,13 @@ export const chat = async (req, res) => {
         // Get recent conversation history from Firestore
         const recentLogsSnap = await db.collection('aiLogs')
             .where('userId', '==', userId)
-            .orderBy('createdAt', 'desc')
-            .limit(5)
             .get();
 
-        const recentLogs = queryToArray(recentLogsSnap);
+        let recentLogs = queryToArray(recentLogsSnap);
+        recentLogs.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        recentLogs = recentLogs.slice(0, 5);
+
+
 
         const conversationHistory = recentLogs.flatMap(log => {
             return [
@@ -77,12 +79,15 @@ export const getLogs = async (req, res) => {
             query = db.collection('aiLogs').orderBy('createdAt', 'desc');
         } else {
             query = db.collection('aiLogs')
-                .where('userId', '==', userId)
-                .orderBy('createdAt', 'desc');
+                .where('userId', '==', userId);
         }
 
         const logsSnap = await query.get();
         let logs = queryToArray(logsSnap);
+
+        if (req.user.role !== 'admin') {
+            logs.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        }
 
         const total = logs.length;
         const startIndex = (parseInt(page) - 1) * parseInt(limit);

@@ -40,9 +40,7 @@ export function AdminAdvocates() {
             if (filterStatus === 'pending') params.isVerified = false;
             if (filterStatus === 'verified') params.isVerified = true;
 
-            // Reusing getPendingAdvocates if needed, or a generic getAllAdvocates for admin
-            // For now, let's assume we fetch all and filter client-side if no dedicated admin search
-            const response = await adminAPI.getPendingAdvocates(); // This currently returns pending
+            const response = await adminAPI.getAdvocates(params);
             if (response.data.success) {
                 setAdvocates(response.data.data.advocates || []);
             }

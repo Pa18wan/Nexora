@@ -43,10 +43,11 @@ export const getClientDashboard = async (req, res) => {
         // Recent notifications
         const allNotifSnap = await db.collection('notifications')
             .where('userId', '==', clientId)
-            .orderBy('createdAt', 'desc')
-            .limit(5)
             .get();
-        const notifications = queryToArray(allNotifSnap);
+
+        let notifications = queryToArray(allNotifSnap);
+        notifications.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        notifications = notifications.slice(0, 5);
 
         res.json({
             success: true,

@@ -1,11 +1,12 @@
 import React, { ReactNode, useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate, Outlet } from 'react-router-dom';
 import {
-    LayoutDashboard, Briefcase, FileText, MessageSquare,
-    Bell, Settings, User, LogOut, Search, Menu, X, Users, BarChart3, AlertTriangle, Shield, Brain
+    LayoutDashboard, Briefcase, MessageSquare,
+    Bell, Settings, User, LogOut, Search, Menu, X, Users, BarChart3, AlertTriangle, Shield
 } from 'lucide-react';
 import { ThemeToggle } from '../common';
 import { useAuth } from '../../context/AuthContext';
+import { notificationsAPI } from '../../services/api';
 import './DashboardLayout.css';
 
 interface NavItem {
@@ -18,7 +19,6 @@ const clientNav: NavItem[] = [
     { icon: <LayoutDashboard size={20} />, label: 'Dashboard', to: '/dashboard' },
     { icon: <Briefcase size={20} />, label: 'My Cases', to: '/dashboard/cases' },
     { icon: <Search size={20} />, label: 'Find Advocates', to: '/dashboard/advocates' },
-    { icon: <FileText size={20} />, label: 'Documents', to: '/dashboard/documents' },
     { icon: <MessageSquare size={20} />, label: 'AI Assistant', to: '/dashboard/chat' },
     { icon: <Bell size={20} />, label: 'Notifications', to: '/dashboard/notifications' },
     { icon: <Settings size={20} />, label: 'Settings', to: '/dashboard/settings' }
@@ -27,7 +27,6 @@ const clientNav: NavItem[] = [
 const advocateNav: NavItem[] = [
     { icon: <LayoutDashboard size={20} />, label: 'Dashboard', to: '/advocate' },
     { icon: <Briefcase size={20} />, label: 'Cases', to: '/advocate/cases' },
-    { icon: <FileText size={20} />, label: 'Documents', to: '/advocate/documents' },
     { icon: <Users size={20} />, label: 'Requests', to: '/advocate/requests' },
     { icon: <BarChart3 size={20} />, label: 'Analytics', to: '/advocate/analytics' },
     { icon: <Bell size={20} />, label: 'Notifications', to: '/advocate/notifications' },
@@ -39,7 +38,6 @@ const adminNav: NavItem[] = [
     { icon: <Users size={20} />, label: 'Users', to: '/admin/users' },
     { icon: <Shield size={20} />, label: 'Advocates', to: '/admin/advocates' },
     { icon: <Briefcase size={20} />, label: 'Cases', to: '/admin/cases' },
-    { icon: <Brain size={20} />, label: 'AI Logs', to: '/admin/ai-logs' },
     { icon: <BarChart3 size={20} />, label: 'Analytics', to: '/admin/analytics' },
     { icon: <Settings size={20} />, label: 'Settings', to: '/admin/settings' },
     { icon: <User size={20} />, label: 'Profile', to: '/admin/profile' }
@@ -51,6 +49,7 @@ export function DashboardLayout() {
     const navigate = useNavigate();
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [theme, setTheme] = useState<'light' | 'dark'>('dark');
+    const [unreadCount, setUnreadCount] = useState(0);
 
     useEffect(() => {
         // Watch for theme changes
@@ -65,6 +64,24 @@ export function DashboardLayout() {
 
         return () => observer.disconnect();
     }, []);
+
+    useEffect(() => {
+        const fetchUnreadCount = async () => {
+            if (!user) return;
+            try {
+                const response = await notificationsAPI.getAll({ limit: 1 });
+                if (response.data && response.data.data && typeof response.data.data.unreadCount === 'number') {
+                    setUnreadCount(response.data.data.unreadCount);
+                }
+            } catch (error) {
+                console.error('Failed to fetch notifications count', error);
+            }
+        };
+
+        fetchUnreadCount();
+        const interval = setInterval(fetchUnreadCount, 60000); // Poll every minute
+        return () => clearInterval(interval);
+    }, [user]);
 
     const navItems = user?.role === 'admin' ? adminNav :
         user?.role === 'advocate' ? advocateNav : clientNav;
@@ -138,7 +155,7 @@ export function DashboardLayout() {
                         <ThemeToggle />
                         <Link to={`/${user?.role === 'client' ? 'dashboard' : user?.role}/notifications`} className="header-notification">
                             <Bell size={20} />
-                            <span className="notification-badge">3</span>
+                            {unreadCount > 0 && <span className="notification-badge">{unreadCount > 99 ? '99+' : unreadCount}</span>}
                         </Link>
                         <div className="header-user">
                             <div className="user-avatar">

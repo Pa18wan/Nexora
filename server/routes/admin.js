@@ -11,6 +11,7 @@ router.get('/dashboard', adminController.getAdminDashboard);
 router.get('/users', adminController.getUsers);
 router.put('/users/:userId/status', adminController.updateUserStatus); // suspend/block
 
+router.get('/advocates', adminController.getAllAdvocates);
 router.get('/advocates/pending', adminController.getPendingAdvocates);
 router.put('/advocates/:advocateId/verify', adminController.verifyAdvocate); // approve/reject
 
