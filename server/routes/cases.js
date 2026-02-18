@@ -51,11 +51,11 @@ router.post('/', protect, authorize('client'), async (req, res) => {
         }
 
         newCase.status = 'pending_advocate';
-        await db.collection('cases').doc(caseId).set(newCase);
+        await db.ref('cases/' + caseId).set(newCase);
 
         // Log AI interaction
         try {
-            await db.collection('aiLogs').doc(generateId()).set({
+            await db.ref('aiLogs').push({
                 caseId, userId: req.user._id, type: 'case_analysis',
                 input: { title, description, category },
                 output: newCase.aiAnalysis,
@@ -66,7 +66,7 @@ router.post('/', protect, authorize('client'), async (req, res) => {
 
         // Notification
         try {
-            await db.collection('notifications').doc(generateId()).set({
+            await db.ref('notifications').push({
                 userId: req.user._id, type: 'case_update', title: 'Case Analyzed',
                 message: `Your case "${title}" has been analyzed. Urgency: ${newCase.urgencyLevel}`,
                 relatedCase: caseId,
@@ -94,19 +94,28 @@ router.get('/', protect, async (req, res) => {
         let allCases = [];
 
         if (req.user.role === 'client') {
-            const snap = await db.collection('cases').where('clientId', '==', req.user._id).get();
+            const snap = await db.ref('cases')
+                .orderByChild('clientId')
+                .equalTo(req.user._id)
+                .once('value');
             allCases = queryToArray(snap);
         } else if (req.user.role === 'advocate') {
-            const advSnap = await db.collection('advocates')
-                .where('userId', '==', req.user._id)
-                .limit(1).get();
-            if (!advSnap.empty) {
-                const snap = await db.collection('cases').where('advocateId', '==', advSnap.docs[0].id).get();
+            const advSnap = await db.ref('advocates')
+                .orderByChild('userId')
+                .equalTo(req.user._id)
+                .limitToFirst(1)
+                .once('value');
+            if (advSnap.exists()) {
+                const advocates = queryToArray(advSnap);
+                const snap = await db.ref('cases')
+                    .orderByChild('advocateId')
+                    .equalTo(advocates[0]._id)
+                    .once('value');
                 allCases = queryToArray(snap);
             }
         } else {
             // admin
-            const snap = await db.collection('cases').get();
+            const snap = await db.ref('cases').once('value');
             allCases = queryToArray(snap);
         }
 
@@ -116,10 +125,10 @@ router.get('/', protect, async (req, res) => {
         // Enrich with user info
         for (let c of allCases) {
             if (c.clientId) {
-                const uDoc = await db.collection('users').doc(c.clientId).get();
-                if (uDoc.exists) {
-                    c.clientName = uDoc.data().name;
-                    c.clientEmail = uDoc.data().email;
+                const uSnapshot = await db.ref('users/' + c.clientId).once('value');
+                if (uSnapshot.exists()) {
+                    c.clientName = uSnapshot.val().name;
+                    c.clientEmail = uSnapshot.val().email;
                 }
             }
         }
@@ -142,32 +151,33 @@ router.get('/', protect, async (req, res) => {
 // Get single case
 router.get('/:id', protect, async (req, res) => {
     try {
-        const caseDoc = await db.collection('cases').doc(req.params.id).get();
-        if (!caseDoc.exists) {
+        const caseSnapshot = await db.ref('cases/' + req.params.id).once('value');
+        if (!caseSnapshot.exists()) {
             return res.status(404).json({ success: false, message: 'Case not found' });
         }
 
-        const caseData = { _id: caseDoc.id, ...caseDoc.data() };
+        const caseData = { _id: caseSnapshot.key, ...caseSnapshot.val() };
+        const caseId = caseSnapshot.key;
 
         // Enrich with client info
         if (caseData.clientId) {
-            const clientDoc = await db.collection('users').doc(caseData.clientId).get();
-            if (clientDoc.exists) {
-                const { password, ...clientData } = clientDoc.data();
+            const clientSnapshot = await db.ref('users/' + caseData.clientId).once('value');
+            if (clientSnapshot.exists()) {
+                const { password, ...clientData } = clientSnapshot.val();
                 caseData.client = { _id: caseData.clientId, ...clientData };
             }
         }
 
         // Enrich with advocate info
         if (caseData.advocateId) {
-            const advDoc = await db.collection('advocates').doc(caseData.advocateId).get();
-            if (advDoc.exists) {
-                const advData = advDoc.data();
+            const advSnapshot = await db.ref('advocates/' + caseData.advocateId).once('value');
+            if (advSnapshot.exists()) {
+                const advData = advSnapshot.val();
                 caseData.advocate = { _id: caseData.advocateId, ...advData };
                 if (advData.userId) {
-                    const advUserDoc = await db.collection('users').doc(advData.userId).get();
-                    if (advUserDoc.exists) {
-                        caseData.advocate.user = { _id: advData.userId, name: advUserDoc.data().name, email: advUserDoc.data().email };
+                    const advUserSnapshot = await db.ref('users/' + advData.userId).once('value');
+                    if (advUserSnapshot.exists()) {
+                        caseData.advocate.user = { _id: advData.userId, name: advUserSnapshot.val().name, email: advUserSnapshot.val().email };
                     }
                 }
             }
@@ -177,11 +187,16 @@ router.get('/:id', protect, async (req, res) => {
         const isClient = caseData.clientId === req.user._id;
         let isAssignedAdvocate = false;
         if (req.user.role === 'advocate') {
-            const advSnap = await db.collection('advocates')
-                .where('userId', '==', req.user._id)
-                .limit(1).get();
-            if (!advSnap.empty && caseData.advocateId === advSnap.docs[0].id) {
-                isAssignedAdvocate = true;
+            const advSnap = await db.ref('advocates')
+                .orderByChild('userId')
+                .equalTo(req.user._id)
+                .limitToFirst(1)
+                .once('value');
+            if (advSnap.exists()) {
+                const advocates = queryToArray(advSnap);
+                if (caseData.advocateId === advocates[0]._id) {
+                    isAssignedAdvocate = true;
+                }
             }
         }
         const isAdmin = req.user.role === 'admin';
@@ -201,23 +216,23 @@ router.get('/:id', protect, async (req, res) => {
 router.put('/:id/assign', protect, authorize('client'), async (req, res) => {
     try {
         const { advocateId } = req.body;
-        const caseDoc = await db.collection('cases').doc(req.params.id).get();
+        const caseSnapshot = await db.ref('cases/' + req.params.id).once('value');
 
-        if (!caseDoc.exists) return res.status(404).json({ success: false, message: 'Case not found' });
-        const caseData = caseDoc.data();
+        if (!caseSnapshot.exists()) return res.status(404).json({ success: false, message: 'Case not found' });
+        const caseData = caseSnapshot.val();
 
         if (caseData.clientId !== req.user._id) {
             return res.status(403).json({ success: false, message: 'Not authorized' });
         }
 
-        const advDoc = await db.collection('advocates').doc(advocateId).get();
-        if (!advDoc.exists) return res.status(404).json({ success: false, message: 'Advocate not found' });
+        const advSnapshot = await db.ref('advocates/' + advocateId).once('value');
+        if (!advSnapshot.exists()) return res.status(404).json({ success: false, message: 'Advocate not found' });
 
-        const advData = advDoc.data();
+        const advData = advSnapshot.val();
         let advocateName = 'Advocate';
         if (advData.userId) {
-            const uDoc = await db.collection('users').doc(advData.userId).get();
-            if (uDoc.exists) advocateName = uDoc.data().name;
+            const uSnapshot = await db.ref('users/' + advData.userId).once('value');
+            if (uSnapshot.exists()) advocateName = uSnapshot.val().name;
         }
 
         const timeline = caseData.timeline || [];
@@ -228,7 +243,7 @@ router.put('/:id/assign', protect, authorize('client'), async (req, res) => {
             createdAt: new Date().toISOString()
         });
 
-        await db.collection('cases').doc(req.params.id).update({
+        await db.ref('cases/' + req.params.id).update({
             advocateId,
             status: 'advocate_assigned',
             timeline,
@@ -237,7 +252,7 @@ router.put('/:id/assign', protect, authorize('client'), async (req, res) => {
 
         // Notify advocate
         if (advData.userId) {
-            await db.collection('notifications').doc(generateId()).set({
+            await db.ref('notifications').push({
                 userId: advData.userId, type: 'case_update', title: 'New Case Assigned',
                 message: `You have been assigned to case: ${caseData.title}`,
                 relatedCase: req.params.id,
@@ -257,10 +272,10 @@ router.put('/:id/assign', protect, authorize('client'), async (req, res) => {
 router.put('/:id/status', protect, async (req, res) => {
     try {
         const { status, notes } = req.body;
-        const caseDoc = await db.collection('cases').doc(req.params.id).get();
+        const caseSnapshot = await db.ref('cases/' + req.params.id).once('value');
 
-        if (!caseDoc.exists) return res.status(404).json({ success: false, message: 'Case not found' });
-        const caseData = caseDoc.data();
+        if (!caseSnapshot.exists()) return res.status(404).json({ success: false, message: 'Case not found' });
+        const caseData = caseSnapshot.val();
 
         const oldStatus = caseData.status;
         const timeline = caseData.timeline || [];
@@ -280,10 +295,10 @@ router.put('/:id/status', protect, async (req, res) => {
             updateData.closedDate = new Date().toISOString();
         }
 
-        await db.collection('cases').doc(req.params.id).update(updateData);
+        await db.ref('cases/' + req.params.id).update(updateData);
 
         // Notify client
-        await db.collection('notifications').doc(generateId()).set({
+        await db.ref('notifications').push({
             userId: caseData.clientId, type: 'case_update', title: 'Case Status Updated',
             message: `Your case status has been updated to: ${status}`,
             relatedCase: req.params.id,

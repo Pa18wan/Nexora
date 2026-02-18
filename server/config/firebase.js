@@ -36,29 +36,30 @@ try {
     console.error('❌ Firebase Admin initialization failed:', error.message);
 }
 
-// Firestore Database
-export const db = admin.apps.length ? admin.firestore() : null;
+// Realtime Database
+const rtdb = admin.database();
+export const db = rtdb; // Export as db to keep import compatibility, but methods are different
 
 // Firebase Auth
 export const auth = admin.apps.length ? admin.auth() : null;
 
-// Helper: Generate a unique ID (like MongoDB _id)
-export const generateId = () => db ? db.collection('_temp').doc().id : Date.now().toString();
+// Helper: Generate a unique ID
+export const generateId = () => rtdb.ref().push().key;
 
-// Helper: Firestore Timestamp
-export const timestamp = () => admin.firestore.FieldValue.serverTimestamp();
+// Helper: Server Timestamp
+export const timestamp = () => admin.database.ServerValue.TIMESTAMP;
 
-// Helper: Convert Firestore doc to plain object with _id
-export const docToObj = (doc) => {
-    if (!doc.exists) return null;
-    return { _id: doc.id, ...doc.data() };
+// Helper: Convert RTDB snapshot to object with _id
+export const docToObj = (snapshot) => {
+    if (!snapshot.exists()) return null;
+    return { _id: snapshot.key, ...snapshot.val() };
 };
 
-// Helper: Convert Firestore QuerySnapshot to array
+// Helper: Convert RTDB Snapshot (list) to array
 export const queryToArray = (snapshot) => {
     const results = [];
-    snapshot.forEach(doc => {
-        results.push({ _id: doc.id, ...doc.data() });
+    snapshot.forEach(childSnap => {
+        results.push({ _id: childSnap.key, ...childSnap.val() });
     });
     return results;
 };

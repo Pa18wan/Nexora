@@ -16,12 +16,12 @@ export const upload = async (req, res) => {
             return res.status(400).json({ success: false, error: 'No file uploaded' });
         }
 
-        const caseDoc = await db.collection('cases').doc(caseId).get();
-        if (!caseDoc.exists) {
+        const caseSnapshot = await db.ref('cases/' + caseId).once('value');
+        if (!caseSnapshot.exists()) {
             return res.status(404).json({ success: false, error: 'Case not found' });
         }
 
-        const caseData = caseDoc.data();
+        const caseData = caseSnapshot.val();
 
         // Validate Access
         if (caseData.clientId !== userId && req.user.role !== 'admin') {
@@ -42,15 +42,15 @@ export const upload = async (req, res) => {
             updatedAt: new Date().toISOString()
         };
 
-        await db.collection('documents').doc(documentId).set(document);
+        await db.ref('documents/' + documentId).set(document);
 
         // Notify
         if (caseData.advocateId) {
             // Get advocate's userId
-            const advDoc = await db.collection('advocates').doc(caseData.advocateId).get();
-            if (advDoc.exists) {
-                await db.collection('notifications').doc(generateId()).set({
-                    userId: advDoc.data().userId,
+            const advSnapshot = await db.ref('advocates/' + caseData.advocateId).once('value');
+            if (advSnapshot.exists()) {
+                await db.ref('notifications').push({
+                    userId: advSnapshot.val().userId,
                     type: 'document_uploaded',
                     title: 'New Document Uploaded',
                     message: `New document "${document.title}" uploaded to "${caseData.title}"`,
@@ -62,7 +62,7 @@ export const upload = async (req, res) => {
         }
 
         // Log activity
-        await db.collection('activityLogs').doc(generateId()).set({
+        await db.ref('activityLogs').push({
             userId,
             action: 'document_upload',
             entityType: 'document',
@@ -91,22 +91,23 @@ export const listDocuments = async (req, res) => {
         const userId = req.user._id;
         const caseId = req.params.caseId;
 
-        const caseDoc = await db.collection('cases').doc(caseId).get();
-        if (!caseDoc.exists) {
+        const caseSnapshot = await db.ref('cases/' + caseId).once('value');
+        if (!caseSnapshot.exists()) {
             return res.status(404).json({ success: false, error: 'Case not found' });
         }
 
-        const caseData = caseDoc.data();
+        const caseData = caseSnapshot.val();
         if (caseData.clientId !== userId && req.user.role !== 'admin') {
             return res.status(403).json({ success: false, error: 'Unauthorized' });
         }
 
-        const docsSnap = await db.collection('documents')
-            .where('caseId', '==', caseId)
-            .orderBy('createdAt', 'desc')
-            .get();
+        const docsSnap = await db.ref('documents')
+            .orderByChild('caseId')
+            .equalTo(caseId)
+            .once('value');
 
         const documents = queryToArray(docsSnap);
+        documents.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
         res.json({ success: true, data: { documents } });
 
@@ -124,15 +125,15 @@ export const download = async (req, res) => {
         const userId = req.user._id;
         const documentId = req.params.id;
 
-        const docRef = await db.collection('documents').doc(documentId).get();
-        if (!docRef.exists) {
+        const docSnapshot = await db.ref('documents/' + documentId).once('value');
+        if (!docSnapshot.exists()) {
             return res.status(404).json({ success: false, error: 'Document not found' });
         }
 
-        const document = docRef.data();
+        const document = docSnapshot.val();
 
         // Log download
-        await db.collection('activityLogs').doc(generateId()).set({
+        await db.ref('activityLogs').push({
             userId,
             action: 'document_download',
             entityType: 'document',
@@ -160,24 +161,29 @@ export const listAllDocuments = async (req, res) => {
         let caseIds = [];
 
         if (req.user.role === 'client') {
-            const casesSnap = await db.collection('cases')
-                .where('clientId', '==', userId)
-                .get();
-            caseIds = casesSnap.docs.map(d => d.id);
+            const casesSnap = await db.ref('cases')
+                .orderByChild('clientId')
+                .equalTo(userId)
+                .once('value');
+            caseIds = queryToArray(casesSnap).map(c => c._id);
         } else if (req.user.role === 'advocate') {
-            const advSnap = await db.collection('advocates')
-                .where('userId', '==', userId)
-                .limit(1).get();
-            if (!advSnap.empty) {
-                const casesSnap = await db.collection('cases')
-                    .where('advocateId', '==', advSnap.docs[0].id)
-                    .get();
-                caseIds = casesSnap.docs.map(d => d.id);
+            const advSnap = await db.ref('advocates')
+                .orderByChild('userId')
+                .equalTo(userId)
+                .limitToFirst(1)
+                .once('value');
+            if (advSnap.exists()) {
+                const advocates = queryToArray(advSnap);
+                const casesSnap = await db.ref('cases')
+                    .orderByChild('advocateId')
+                    .equalTo(advocates[0]._id)
+                    .once('value');
+                caseIds = queryToArray(casesSnap).map(c => c._id);
             }
         } else {
             // Admin - get all
-            const casesSnap = await db.collection('cases').get();
-            caseIds = casesSnap.docs.map(d => d.id);
+            const casesSnap = await db.ref('cases').once('value');
+            caseIds = queryToArray(casesSnap).map(c => c._id);
         }
 
         if (caseIds.length === 0) {
@@ -187,19 +193,11 @@ export const listAllDocuments = async (req, res) => {
             });
         }
 
-        // Firestore 'in' queries support max 30 items
-        let allDocuments = [];
-        const chunks = [];
-        for (let i = 0; i < caseIds.length; i += 30) {
-            chunks.push(caseIds.slice(i, i + 30));
-        }
-
-        for (const chunk of chunks) {
-            const docsSnap = await db.collection('documents')
-                .where('caseId', 'in', chunk)
-                .get();
-            allDocuments = allDocuments.concat(queryToArray(docsSnap));
-        }
+        // RTDB doesn't support 'in' queries, so fetch all documents and filter
+        // Optimization: In a real app we would query documents by caseId for each case, but here we fetch all for simplicity
+        const docsSnap = await db.ref('documents').once('value');
+        let allDocuments = queryToArray(docsSnap);
+        allDocuments = allDocuments.filter(d => caseIds.includes(d.caseId));
 
         allDocuments.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
 

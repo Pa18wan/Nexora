@@ -14,9 +14,9 @@ export const protect = async (req, res, next) => {
 
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-        // Fetch user from Firestore
-        const userDoc = await db.collection('users').doc(decoded.id).get();
-        const user = docToObj(userDoc);
+        // Fetch user from Realtime Database
+        const userSnapshot = await db.ref('users/' + decoded.id).once('value');
+        const user = docToObj(userSnapshot);
 
         if (!user) {
             return res.status(401).json({ success: false, message: 'User not found' });

@@ -6,34 +6,34 @@ import { db, generateId, queryToArray, docToObj } from '../config/firebase.js';
 export const getAdminDashboard = async (req, res) => {
     try {
         // Count clients
-        const clientsSnap = await db.collection('users').where('role', '==', 'client').get();
-        const totalUsers = clientsSnap.size;
+        const clientsSnap = await db.ref('users')
+            .orderByChild('role')
+            .equalTo('client')
+            .once('value');
+        const totalUsers = clientsSnap.numChildren();
 
         // Count active advocates
-        const activeAdvSnap = await db.collection('advocates')
-            .where('isVerified', '==', true)
-            .where('isActive', '==', true)
-            .get();
-        const activeAdvocates = activeAdvSnap.size;
+        const advSnap = await db.ref('advocates').once('value');
+        const advocates = queryToArray(advSnap);
+        const activeAdvocates = advocates.filter(a => a.isVerified === true && a.isActive === true).length;
 
         // Count cases
-        const casesSnap = await db.collection('cases').get();
+        const casesSnap = await db.ref('cases').once('value');
         const allCases = queryToArray(casesSnap);
         const totalCases = allCases.length;
         const urgentCases = allCases.filter(c => ['critical', 'high'].includes(c.urgencyLevel)).length;
 
         // Pending verifications
-        const pendingSnap = await db.collection('advocates')
-            .where('isVerified', '==', false)
-            .get();
-        const pendingVerifications = pendingSnap.size;
+        const pendingVerifications = advocates.filter(a => a.isVerified === false).length;
 
         // Recent activity
-        const activitySnap = await db.collection('activityLogs')
-            .orderBy('createdAt', 'desc')
-            .limit(10)
-            .get();
-        const recentActivity = queryToArray(activitySnap);
+        const activitySnap = await db.ref('activityLogs')
+            .orderByChild('createdAt')
+            .limitToLast(10)
+            .once('value');
+
+        let recentActivity = queryToArray(activitySnap);
+        recentActivity.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
         res.json({
             success: true,
@@ -63,12 +63,16 @@ export const getUsers = async (req, res) => {
     try {
         const { role, status, search, page = 1, limit = 10 } = req.query;
 
-        let query = db.collection('users');
+        let usersSnap;
         if (role) {
-            query = query.where('role', '==', role);
+            usersSnap = await db.ref('users')
+                .orderByChild('role')
+                .equalTo(role)
+                .once('value');
+        } else {
+            usersSnap = await db.ref('users').once('value');
         }
 
-        const usersSnap = await query.get();
         let users = queryToArray(usersSnap);
 
         // Filter by status
@@ -126,8 +130,8 @@ export const updateUserStatus = async (req, res) => {
         const { action, reason } = req.body;
         const adminId = req.user._id;
 
-        const userDoc = await db.collection('users').doc(userId).get();
-        if (!userDoc.exists) {
+        const userSnapshot = await db.ref('users/' + userId).once('value');
+        if (!userSnapshot.exists()) {
             return res.status(404).json({ success: false, error: 'User not found' });
         }
 
@@ -141,10 +145,10 @@ export const updateUserStatus = async (req, res) => {
         }
 
         update.updatedAt = new Date().toISOString();
-        await db.collection('users').doc(userId).update(update);
+        await db.ref('users/' + userId).update(update);
 
         // Log admin action
-        await db.collection('adminLogs').doc(generateId()).set({
+        await db.ref('adminLogs').push({
             adminId,
             action: `user_${action}`,
             targetType: 'user',
@@ -153,8 +157,8 @@ export const updateUserStatus = async (req, res) => {
             createdAt: new Date().toISOString()
         });
 
-        const updatedDoc = await db.collection('users').doc(userId).get();
-        const { password, ...updatedUser } = updatedDoc.data();
+        const updatedSnapshot = await db.ref('users/' + userId).once('value');
+        const { password, ...updatedUser } = updatedSnapshot.val();
 
         res.json({
             success: true,
@@ -173,18 +177,19 @@ export const updateUserStatus = async (req, res) => {
  */
 export const getPendingAdvocates = async (req, res) => {
     try {
-        const advSnap = await db.collection('advocates')
-            .where('isVerified', '==', false)
-            .get();
+        const advSnap = await db.ref('advocates')
+            .orderByChild('isVerified')
+            .equalTo(false)
+            .once('value');
 
         let advocates = queryToArray(advSnap);
 
         // Enrich with user data
         for (let adv of advocates) {
             if (adv.userId) {
-                const uDoc = await db.collection('users').doc(adv.userId).get();
-                if (uDoc.exists) {
-                    const { password, ...userData } = uDoc.data();
+                const uSnapshot = await db.ref('users/' + adv.userId).once('value');
+                if (uSnapshot.exists()) {
+                    const { password, ...userData } = uSnapshot.val();
                     adv.user = { _id: adv.userId, ...userData };
                 }
             }
@@ -208,20 +213,24 @@ export const getAllAdvocates = async (req, res) => {
     try {
         const { isVerified } = req.query;
 
-        let query = db.collection('advocates');
+        let advSnap;
         if (isVerified !== undefined) {
-            query = query.where('isVerified', '==', isVerified === 'true');
+            advSnap = await db.ref('advocates')
+                .orderByChild('isVerified')
+                .equalTo(isVerified === 'true')
+                .once('value');
+        } else {
+            advSnap = await db.ref('advocates').once('value');
         }
 
-        const advSnap = await query.get();
         let advocates = queryToArray(advSnap);
 
         // Enrich with user data
         for (let adv of advocates) {
             if (adv.userId) {
-                const uDoc = await db.collection('users').doc(adv.userId).get();
-                if (uDoc.exists) {
-                    const { password, ...userData } = uDoc.data();
+                const uSnapshot = await db.ref('users/' + adv.userId).once('value');
+                if (uSnapshot.exists()) {
+                    const { password, ...userData } = uSnapshot.val();
                     adv.userId = { _id: adv.userId, ...userData };
                 }
             }
@@ -247,19 +256,19 @@ export const verifyAdvocate = async (req, res) => {
         const { action, reason } = req.body;
         const adminId = req.user._id;
 
-        const advDoc = await db.collection('advocates').doc(advocateId).get();
-        if (!advDoc.exists) {
+        const advSnapshot = await db.ref('advocates/' + advocateId).once('value');
+        if (!advSnapshot.exists()) {
             return res.status(404).json({ success: false, error: 'Advocate not found' });
         }
 
         if (action === 'approve') {
-            await db.collection('advocates').doc(advocateId).update({
+            await db.ref('advocates/' + advocateId).update({
                 isVerified: true,
                 updatedAt: new Date().toISOString()
             });
         }
 
-        await db.collection('adminLogs').doc(generateId()).set({
+        await db.ref('adminLogs').push({
             adminId,
             action: action === 'approve' ? 'advocate_approve' : 'advocate_reject',
             targetType: 'advocate',
@@ -284,7 +293,7 @@ export const verifyAdvocate = async (req, res) => {
  */
 export const getSystemSettings = async (req, res) => {
     try {
-        const settingsSnap = await db.collection('systemSettings').get();
+        const settingsSnap = await db.ref('systemSettings').once('value');
         const settings = queryToArray(settingsSnap);
 
         res.json({ success: true, data: { settings } });
@@ -304,12 +313,14 @@ export const updateSystemSettings = async (req, res) => {
 
         for (const update of updates) {
             // Find by key
-            const snap = await db.collection('systemSettings')
-                .where('key', '==', update.key)
-                .limit(1).get();
+            const snap = await db.ref('systemSettings')
+                .orderByChild('key')
+                .equalTo(update.key)
+                .limitToFirst(1)
+                .once('value');
 
-            if (snap.empty) {
-                await db.collection('systemSettings').doc(generateId()).set({
+            if (!snap.exists()) {
+                await db.ref('systemSettings').push({
                     key: update.key,
                     value: update.value,
                     lastUpdatedBy: adminId,
@@ -317,7 +328,8 @@ export const updateSystemSettings = async (req, res) => {
                     updatedAt: new Date().toISOString()
                 });
             } else {
-                await db.collection('systemSettings').doc(snap.docs[0].id).update({
+                const settingId = Object.keys(snap.val())[0];
+                await db.ref('systemSettings/' + settingId).update({
                     value: update.value,
                     lastUpdatedBy: adminId,
                     updatedAt: new Date().toISOString()
@@ -325,7 +337,8 @@ export const updateSystemSettings = async (req, res) => {
             }
         }
 
-        await db.collection('adminLogs').doc(generateId()).set({
+        // Admin logs push
+        await db.ref('adminLogs').push({
             adminId,
             action: 'settings_update',
             targetType: 'settings',
@@ -348,9 +361,9 @@ export const getComplaints = async (req, res) => {
     try {
         const { status, type, page = 1, limit = 10 } = req.query;
 
-        const complaintsSnap = await db.collection('complaints')
-            .orderBy('createdAt', 'desc')
-            .get();
+        const complaintsSnap = await db.ref('complaints')
+            .orderByChild('createdAt')
+            .once('value');
 
         let complaints = queryToArray(complaintsSnap);
 
@@ -364,9 +377,9 @@ export const getComplaints = async (req, res) => {
         // Enrich with user info
         for (let c of complaints) {
             if (c.raisedBy) {
-                const uDoc = await db.collection('users').doc(c.raisedBy).get();
-                if (uDoc.exists) {
-                    const { password, ...userData } = uDoc.data();
+                const uSnapshot = await db.ref('users/' + c.raisedBy).once('value');
+                if (uSnapshot.exists()) {
+                    const { password, ...userData } = uSnapshot.val();
                     c.raisedByUser = { _id: c.raisedBy, ...userData };
                 }
             }
@@ -398,12 +411,12 @@ export const resolveComplaint = async (req, res) => {
         const { action, notes } = req.body;
         const adminId = req.user._id;
 
-        const complaintDoc = await db.collection('complaints').doc(complaintId).get();
-        if (!complaintDoc.exists) {
+        const complaintSnapshot = await db.ref('complaints/' + complaintId).once('value');
+        if (!complaintSnapshot.exists()) {
             return res.status(404).json({ success: false, error: 'Complaint not found' });
         }
 
-        await db.collection('complaints').doc(complaintId).update({
+        await db.ref('complaints/' + complaintId).update({
             status: action,
             resolutionNotes: notes,
             resolvedBy: adminId,
@@ -411,7 +424,7 @@ export const resolveComplaint = async (req, res) => {
             updatedAt: new Date().toISOString()
         });
 
-        await db.collection('adminLogs').doc(generateId()).set({
+        await db.ref('adminLogs').push({
             adminId,
             action: `complaint_${action}`,
             targetType: 'complaint',
@@ -438,14 +451,14 @@ export const getAnalytics = async (req, res) => {
     try {
         // Get all collections data
         const [usersSnap, advocatesSnap, casesSnap, aiLogsSnap, complaintsSnap, reviewsSnap, docsSnap, notifsSnap] = await Promise.all([
-            db.collection('users').get(),
-            db.collection('advocates').get(),
-            db.collection('cases').get(),
-            db.collection('aiLogs').get(),
-            db.collection('complaints').get(),
-            db.collection('reviews').get(),
-            db.collection('documents').get(),
-            db.collection('notifications').get()
+            db.ref('users').once('value'),
+            db.ref('advocates').once('value'),
+            db.ref('cases').once('value'),
+            db.ref('aiLogs').once('value'),
+            db.ref('complaints').once('value'),
+            db.ref('reviews').once('value'),
+            db.ref('documents').once('value'),
+            db.ref('notifications').once('value')
         ]);
 
         const users = queryToArray(usersSnap);
@@ -543,9 +556,9 @@ export const getAnalytics = async (req, res) => {
         // Enrich top advocates with user names
         for (const adv of topAdvocates) {
             if (adv.userId) {
-                const uDoc = await db.collection('users').doc(adv.userId).get();
-                if (uDoc.exists) {
-                    adv.name = uDoc.data().name;
+                const uSnapshot = await db.ref('users/' + adv.userId).once('value');
+                if (uSnapshot.exists()) {
+                    adv.name = uSnapshot.val().name;
                 }
             }
         }
@@ -571,8 +584,8 @@ export const getAnalytics = async (req, res) => {
                     activeUsers: activeUsers.length,
                     verifiedUsers: verifiedUsers.length,
                     totalCases: cases.length,
-                    totalDocuments: docsSnap.size,
-                    totalNotifications: notifsSnap.size,
+                    totalDocuments: docsSnap.numChildren(),
+                    totalNotifications: notifsSnap.numChildren(),
                     totalAIInteractions: aiLogs.length,
                     totalReviews: reviews.length
                 },

@@ -70,7 +70,7 @@ app.get('/api/health', (req, res) => {
     res.json({
         success: true,
         message: 'Nexora Legal Services API is running',
-        database: 'Firebase Firestore',
+        database: 'Firebase Realtime Database',
         timestamp: new Date().toISOString()
     });
 });
@@ -81,7 +81,7 @@ app.get('/', (req, res) => {
         success: true,
         message: 'Nexora AI Legal Intelligence Platform API',
         version: '2.0.0',
-        database: 'Firebase Firestore',
+        database: 'Firebase Realtime Database',
         docs: '/api/health'
     });
 });
@@ -106,7 +106,7 @@ if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
     app.listen(PORT, () => {
         console.log(`
 🚀 Nexora Server running on port ${PORT}
-🔥 Database: Firebase Firestore
+🔥 Database: Firebase Realtime Database
 📚 API Docs: http://localhost:${PORT}/api/health
 🔐 Environment: ${process.env.NODE_ENV || 'development'}
   `);

@@ -21,9 +21,10 @@ router.get('/', async (req, res) => {
     try {
         const { specialization, city, minExperience, minRating, search, sortBy = 'rating', page = 1, limit = 10 } = req.query;
 
-        const advSnap = await db.collection('advocates')
-            .where('isVerified', '==', true)
-            .get();
+        const advSnap = await db.ref('advocates')
+            .orderByChild('isVerified')
+            .equalTo(true)
+            .once('value');
 
         let advocates = queryToArray(advSnap);
 
@@ -56,9 +57,9 @@ router.get('/', async (req, res) => {
         // Enrich with user info
         for (let adv of advocates) {
             if (adv.userId) {
-                const uDoc = await db.collection('users').doc(adv.userId).get();
-                if (uDoc.exists) {
-                    adv.user = { _id: adv.userId, name: uDoc.data().name, email: uDoc.data().email, avatar: uDoc.data().avatar };
+                const uSnapshot = await db.ref('users/' + adv.userId).once('value');
+                if (uSnapshot.exists()) {
+                    adv.user = { _id: adv.userId, name: uSnapshot.val().name, email: uSnapshot.val().email, avatar: uSnapshot.val().avatar };
                 }
             }
         }
@@ -95,24 +96,26 @@ router.get('/', async (req, res) => {
 // Get advocate by ID
 router.get('/:id', async (req, res) => {
     try {
-        const advDoc = await db.collection('advocates').doc(req.params.id).get();
-        if (!advDoc.exists) return res.status(404).json({ success: false, message: 'Advocate not found' });
+        const advSnapshot = await db.ref('advocates/' + req.params.id).once('value');
+        if (!advSnapshot.exists()) return res.status(404).json({ success: false, message: 'Advocate not found' });
 
-        const advocate = { _id: advDoc.id, ...advDoc.data() };
+        const advocate = { _id: advSnapshot.key, ...advSnapshot.val() };
+        const advocateId = advSnapshot.key;
 
         // Enrich with user info
         if (advocate.userId) {
-            const uDoc = await db.collection('users').doc(advocate.userId).get();
-            if (uDoc.exists) {
-                const { password, ...userData } = uDoc.data();
+            const uSnapshot = await db.ref('users/' + advocate.userId).once('value');
+            if (uSnapshot.exists()) {
+                const { password, ...userData } = uSnapshot.val();
                 advocate.user = { _id: advocate.userId, ...userData };
             }
         }
 
         // Case stats
-        const casesSnap = await db.collection('cases')
-            .where('advocateId', '==', advocate._id)
-            .get();
+        const casesSnap = await db.ref('cases')
+            .orderByChild('advocateId')
+            .equalTo(advocateId)
+            .once('value');
         const allCases = queryToArray(casesSnap);
         const resolvedCases = allCases.filter(c => c.status === 'resolved').length;
 
@@ -132,13 +135,16 @@ router.get('/:id', async (req, res) => {
 // Update advocate profile
 router.put('/profile', protect, authorize('advocate'), async (req, res) => {
     try {
-        const advSnap = await db.collection('advocates')
-            .where('userId', '==', req.user._id)
-            .limit(1).get();
+        const advSnap = await db.ref('advocates')
+            .orderByChild('userId')
+            .equalTo(req.user._id)
+            .limitToFirst(1)
+            .once('value');
 
-        if (advSnap.empty) return res.status(404).json({ success: false, message: 'Advocate profile not found' });
+        if (!advSnap.exists()) return res.status(404).json({ success: false, message: 'Advocate profile not found' });
 
-        const advocateId = advSnap.docs[0].id;
+        const advocatesArr = queryToArray(advSnap);
+        const advocateId = advocatesArr[0]._id;
         const updateFields = ['specialization', 'experienceYears', 'education', 'certifications',
             'courtsPracticed', 'languages', 'consultationFee', 'availability', 'officeAddress', 'bio', 'isAcceptingCases'];
 
@@ -147,11 +153,11 @@ router.put('/profile', protect, authorize('advocate'), async (req, res) => {
             if (req.body[field] !== undefined) updateData[field] = req.body[field];
         });
 
-        await db.collection('advocates').doc(advocateId).update(updateData);
+        await db.ref('advocates/' + advocateId).update(updateData);
 
-        const updatedDoc = await db.collection('advocates').doc(advocateId).get();
+        const updatedSnapshot = await db.ref('advocates/' + advocateId).once('value');
 
-        res.json({ success: true, message: 'Profile updated successfully', data: { _id: advocateId, ...updatedDoc.data() } });
+        res.json({ success: true, message: 'Profile updated successfully', data: { _id: advocateId, ...updatedSnapshot.val() } });
     } catch (error) {
         console.error('Update profile error:', error);
         res.status(500).json({ success: false, message: 'Failed to update profile' });
@@ -161,17 +167,21 @@ router.put('/profile', protect, authorize('advocate'), async (req, res) => {
 // Advocate dashboard stats
 router.get('/dashboard/stats', protect, authorize('advocate'), async (req, res) => {
     try {
-        const advSnap = await db.collection('advocates')
-            .where('userId', '==', req.user._id)
-            .limit(1).get();
+        const advSnap = await db.ref('advocates')
+            .orderByChild('userId')
+            .equalTo(req.user._id)
+            .limitToFirst(1)
+            .once('value');
 
-        if (advSnap.empty) return res.status(404).json({ success: false, message: 'Advocate profile not found' });
+        if (!advSnap.exists()) return res.status(404).json({ success: false, message: 'Advocate profile not found' });
 
-        const advocate = { _id: advSnap.docs[0].id, ...advSnap.docs[0].data() };
+        const advocatesArr = queryToArray(advSnap);
+        const advocate = advocatesArr[0];
 
-        const casesSnap = await db.collection('cases')
-            .where('advocateId', '==', advocate._id)
-            .get();
+        const casesSnap = await db.ref('cases')
+            .orderByChild('advocateId')
+            .equalTo(advocate._id)
+            .once('value');
         const allCases = queryToArray(casesSnap);
 
         const activeCases = allCases.filter(c => ['advocate_assigned', 'in_progress', 'assigned'].includes(c.status)).length;
@@ -183,9 +193,10 @@ router.get('/dashboard/stats', protect, authorize('advocate'), async (req, res) 
         const totalCases = allCases.length;
 
         // Pending requests (cases where this advocate is recommended but not yet assigned)
-        const pendingSnap = await db.collection('cases')
-            .where('status', '==', 'pending_advocate')
-            .get();
+        const pendingSnap = await db.ref('cases')
+            .orderByChild('status')
+            .equalTo('pending_advocate')
+            .once('value');
         const pendingCases = queryToArray(pendingSnap);
         const pendingRequests = pendingCases.filter(c =>
             c.recommendedAdvocates && c.recommendedAdvocates.some(r => r.advocateId === advocate._id)

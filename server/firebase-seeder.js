@@ -24,8 +24,8 @@ if (!admin.apps.length) {
     }
 }
 
-const db = admin.firestore();
-const gid = () => db.collection('_tmp').doc().id;
+const db = admin.database();
+const gid = () => db.ref().push().key;
 const now = new Date().toISOString();
 const ago = (days) => new Date(Date.now() - days * 86400000).toISOString();
 
@@ -33,12 +33,7 @@ const ago = (days) => new Date(Date.now() - days * 86400000).toISOString();
 async function clearCollections() {
     const collections = ['users', 'advocates', 'cases', 'notifications', 'complaints', 'aiLogs', 'activityLogs', 'adminLogs', 'reviews', 'systemSettings', 'documents'];
     for (const col of collections) {
-        const snap = await db.collection(col).limit(500).get();
-        if (!snap.empty) {
-            const batch = db.batch();
-            snap.docs.forEach(d => batch.delete(d.ref));
-            await batch.commit();
-        }
+        await db.ref(col).remove();
     }
 }
 
@@ -68,7 +63,7 @@ async function seed() {
 
     console.log('👤 Creating users...');
     for (const u of users) {
-        await db.collection('users').doc(u.id).set(u.data);
+        await db.ref('users/' + u.id).set(u.data);
         try {
             await admin.auth().createUser({ uid: u.id, email: u.data.email, password: 'password123', displayName: u.data.name, emailVerified: true });
             console.log(`   ✅ ${u.data.name} (${u.data.email})`);
@@ -94,7 +89,7 @@ async function seed() {
     ];
 
     console.log('\n⚖️ Creating advocate profiles...');
-    for (const a of advocates) { await db.collection('advocates').doc(a.id).set(a.data); console.log(`   ✅ ${a.data.barCouncilId}`); }
+    for (const a of advocates) { await db.ref('advocates/' + a.id).set(a.data); console.log(`   ✅ ${a.data.barCouncilId}`); }
 
     // ========== CASES ==========
     const cases = [
@@ -111,7 +106,7 @@ async function seed() {
     ];
 
     console.log('\n📋 Creating cases...');
-    for (const c of cases) { await db.collection('cases').doc(c.id).set(c.data); console.log(`   ✅ ${c.data.title.substring(0, 50)}...`); }
+    for (const c of cases) { await db.ref('cases/' + c.id).set(c.data); console.log(`   ✅ ${c.data.title.substring(0, 50)}...`); }
 
     // ========== NOTIFICATIONS ==========
     const notifs = [
@@ -130,7 +125,7 @@ async function seed() {
     ];
 
     console.log('\n🔔 Creating notifications...');
-    for (const n of notifs) { await db.collection('notifications').doc(gid()).set(n); }
+    for (const n of notifs) { await db.ref('notifications/' + gid()).set(n); }
     console.log(`   ✅ ${notifs.length} notifications`);
 
     // ========== COMPLAINTS ==========
@@ -141,7 +136,7 @@ async function seed() {
     ];
 
     console.log('\n📢 Creating complaints...');
-    for (const c of complaints) { await db.collection('complaints').doc(gid()).set(c); }
+    for (const c of complaints) { await db.ref('complaints/' + gid()).set(c); }
     console.log(`   ✅ ${complaints.length} complaints`);
 
     // ========== REVIEWS ==========
@@ -155,7 +150,7 @@ async function seed() {
     ];
 
     console.log('\n⭐ Creating reviews...');
-    for (const r of reviews) { await db.collection('reviews').doc(gid()).set(r); }
+    for (const r of reviews) { await db.ref('reviews/' + gid()).set(r); }
     console.log(`   ✅ ${reviews.length} reviews`);
 
     // ========== AI LOGS ==========
@@ -169,7 +164,7 @@ async function seed() {
     ];
 
     console.log('\n🤖 Creating AI logs...');
-    for (const l of aiLogs) { await db.collection('aiLogs').doc(gid()).set(l); }
+    for (const l of aiLogs) { await db.ref('aiLogs/' + gid()).set(l); }
     console.log(`   ✅ ${aiLogs.length} AI logs`);
 
     // ========== ACTIVITY LOGS ==========
@@ -188,7 +183,7 @@ async function seed() {
     ];
 
     console.log('\n📝 Creating activity logs...');
-    for (const l of actLogs) { await db.collection('activityLogs').doc(gid()).set(l); }
+    for (const l of actLogs) { await db.ref('activityLogs/' + gid()).set(l); }
     console.log(`   ✅ ${actLogs.length} activity logs`);
 
     // ========== ADMIN LOGS ==========
@@ -202,7 +197,7 @@ async function seed() {
     ];
 
     console.log('\n🛡️ Creating admin logs...');
-    for (const l of adLogs) { await db.collection('adminLogs').doc(gid()).set(l); }
+    for (const l of adLogs) { await db.ref('adminLogs/' + gid()).set(l); }
     console.log(`   ✅ ${adLogs.length} admin logs`);
 
     // ========== SYSTEM SETTINGS ==========
@@ -216,7 +211,7 @@ async function seed() {
     ];
 
     console.log('\n⚙️ Creating system settings...');
-    for (const s of settings) { await db.collection('systemSettings').doc(gid()).set(s); }
+    for (const s of settings) { await db.ref('systemSettings/' + gid()).set(s); }
     console.log(`   ✅ ${settings.length} settings`);
 
     // ========== DOCUMENTS ==========
@@ -231,7 +226,7 @@ async function seed() {
     ];
 
     console.log('\n📄 Creating documents...');
-    for (const d of docs) { await db.collection('documents').doc(gid()).set(d); }
+    for (const d of docs) { await db.ref('documents/' + gid()).set(d); }
     console.log(`   ✅ ${docs.length} documents`);
 
     // ========== SUMMARY ==========

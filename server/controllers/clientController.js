@@ -9,15 +9,23 @@ export const getClientDashboard = async (req, res) => {
         const clientId = req.user._id;
 
         // Get urgency threshold from settings
-        const settingsSnap = await db.collection('systemSettings')
-            .where('key', '==', 'urgencyThreshold')
-            .limit(1).get();
-        const urgencyThreshold = settingsSnap.empty ? 70 : settingsSnap.docs[0].data().value;
+        const settingsSnap = await db.ref('systemSettings')
+            .orderByChild('key')
+            .equalTo('urgencyThreshold')
+            .limitToFirst(1)
+            .once('value');
+
+        let urgencyThreshold = 70;
+        if (settingsSnap.exists()) {
+            const settings = queryToArray(settingsSnap);
+            urgencyThreshold = settings[0].value;
+        }
 
         // Get all client cases
-        const casesSnap = await db.collection('cases')
-            .where('clientId', '==', clientId)
-            .get();
+        const casesSnap = await db.ref('cases')
+            .orderByChild('clientId')
+            .equalTo(clientId)
+            .once('value');
         const allCases = queryToArray(casesSnap);
 
         const totalCases = allCases.length;
@@ -33,19 +41,16 @@ export const getClientDashboard = async (req, res) => {
             .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''))
             .slice(0, 5);
 
-        // Get unread notifications count
-        const notifSnap = await db.collection('notifications')
-            .where('userId', '==', clientId)
-            .where('isRead', '==', false)
-            .get();
-        const unreadNotifications = notifSnap.size;
-
-        // Recent notifications
-        const allNotifSnap = await db.collection('notifications')
-            .where('userId', '==', clientId)
-            .get();
+        // Get client notifications
+        const allNotifSnap = await db.ref('notifications')
+            .orderByChild('userId')
+            .equalTo(clientId)
+            .once('value');
 
         let notifications = queryToArray(allNotifSnap);
+
+        // Filter unread count
+        const unreadNotifications = notifications.filter(n => n.isRead === false).length;
         notifications.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
         notifications = notifications.slice(0, 5);
 
@@ -80,14 +85,17 @@ export const getClientCases = async (req, res) => {
         const clientId = req.user._id;
         const { page = 1, limit = 10, status } = req.query;
 
-        let query = db.collection('cases').where('clientId', '==', clientId);
+        // Fetch cases by client
+        const casesSnap = await db.ref('cases')
+            .orderByChild('clientId')
+            .equalTo(clientId)
+            .once('value');
+
+        let cases = queryToArray(casesSnap);
 
         if (status) {
-            query = query.where('status', '==', status);
+            cases = cases.filter(c => c.status === status);
         }
-
-        const casesSnap = await query.get();
-        let cases = queryToArray(casesSnap);
 
         // Sort by updatedAt desc
         cases.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
@@ -176,11 +184,11 @@ export const submitCase = async (req, res) => {
             newCase.aiAnalysis = { note: 'AI analysis pending' };
         }
 
-        await db.collection('cases').doc(caseId).set(newCase);
+        await db.ref('cases/' + caseId).set(newCase);
 
         // Log activity
         try {
-            await db.collection('activityLogs').doc(generateId()).set({
+            await db.ref('activityLogs').push({
                 userId: clientId,
                 action: 'case_create',
                 entityType: 'case',
@@ -192,7 +200,7 @@ export const submitCase = async (req, res) => {
 
         // Create notification
         try {
-            await db.collection('notifications').doc(generateId()).set({
+            await db.ref('notifications').push({
                 userId: clientId,
                 type: 'case_submitted',
                 title: 'Case Submitted Successfully',
@@ -225,27 +233,25 @@ export const getAdvocateRecommendations = async (req, res) => {
         const { caseId } = req.params;
         const clientId = req.user._id;
 
-        const caseDoc = await db.collection('cases').doc(caseId).get();
-        if (!caseDoc.exists || caseDoc.data().clientId !== clientId) {
+        const caseSnapshot = await db.ref('cases/' + caseId).once('value');
+        if (!caseSnapshot.exists() || caseSnapshot.val().clientId !== clientId) {
             return res.status(404).json({ success: false, error: 'Case not found' });
         }
-        const caseData = { _id: caseDoc.id, ...caseDoc.data() };
+        const caseData = { _id: caseSnapshot.key, ...caseSnapshot.val() };
 
-        // Get available advocates
-        const advSnap = await db.collection('advocates')
-            .where('isVerified', '==', true)
-            .where('isActive', '==', true)
-            .get();
+        // Get all advocates (filtering for verified/active locally as RTDB query is limited)
+        const advSnap = await db.ref('advocates').once('value');
 
         let advocates = queryToArray(advSnap);
+        advocates = advocates.filter(a => a.isVerified === true && a.isActive === true);
 
         // Enrich with user info
         for (let adv of advocates) {
             if (adv.userId) {
-                const uDoc = await db.collection('users').doc(adv.userId).get();
-                if (uDoc.exists) {
-                    adv.userName = uDoc.data().name;
-                    adv.userEmail = uDoc.data().email;
+                const uSnap = await db.ref('users/' + adv.userId).once('value');
+                if (uSnap.exists()) {
+                    adv.userName = uSnap.val().name;
+                    adv.userEmail = uSnap.val().email;
                 }
             }
         }
@@ -298,31 +304,31 @@ export const hireAdvocate = async (req, res) => {
         const { advocateId } = req.body;
         const clientId = req.user._id;
 
-        const caseDoc = await db.collection('cases').doc(caseId).get();
-        if (!caseDoc.exists || caseDoc.data().clientId !== clientId) {
+        const caseSnapshot = await db.ref('cases/' + caseId).once('value');
+        if (!caseSnapshot.exists() || caseSnapshot.val().clientId !== clientId) {
             return res.status(404).json({ success: false, error: 'Case not found' });
         }
 
-        const caseData = caseDoc.data();
+        const caseData = caseSnapshot.val();
         if (caseData.advocateId) {
             return res.status(400).json({ success: false, error: 'Case already has an assigned advocate' });
         }
 
-        const advDoc = await db.collection('advocates').doc(advocateId).get();
-        if (!advDoc.exists || !advDoc.data().isVerified) {
+        const advSnapshot = await db.ref('advocates/' + advocateId).once('value');
+        if (!advSnapshot.exists() || !advSnapshot.val().isVerified) {
             return res.status(400).json({ success: false, error: 'Advocate not available' });
         }
 
         // Update case
-        await db.collection('cases').doc(caseId).update({
+        await db.ref('cases/' + caseId).update({
             advocateId,
             status: 'pending_acceptance',
             updatedAt: new Date().toISOString()
         });
 
         // Notify advocate
-        const advData = advDoc.data();
-        await db.collection('notifications').doc(generateId()).set({
+        const advData = advSnapshot.val();
+        await db.ref('notifications').push({
             userId: advData.userId,
             type: 'case_request',
             title: 'New Case Request',

@@ -8,20 +8,24 @@ export const getAdvocateDashboard = async (req, res) => {
         const userId = req.user._id;
 
         // Get advocate profile
-        const advSnap = await db.collection('advocates')
-            .where('userId', '==', userId)
-            .limit(1).get();
+        const advSnap = await db.ref('advocates')
+            .orderByChild('userId')
+            .equalTo(userId)
+            .limitToFirst(1)
+            .once('value');
 
-        if (advSnap.empty) {
+        if (!advSnap.exists()) {
             return res.status(404).json({ success: false, error: 'Advocate profile not found' });
         }
 
-        const advocate = { _id: advSnap.docs[0].id, ...advSnap.docs[0].data() };
+        const advocates = queryToArray(advSnap);
+        const advocate = advocates[0];
 
         // Get cases assigned to this advocate
-        const casesSnap = await db.collection('cases')
-            .where('advocateId', '==', advocate._id)
-            .get();
+        const casesSnap = await db.ref('cases')
+            .orderByChild('advocateId')
+            .equalTo(advocate._id)
+            .once('value');
         const allCases = queryToArray(casesSnap);
 
         const activeCases = allCases.filter(c => ['assigned', 'in_review', 'in_progress', 'advocate_assigned'].includes(c.status)).length;
@@ -46,10 +50,13 @@ export const getAdvocateDashboard = async (req, res) => {
             .slice(0, 5);
 
         // Unread notifications
-        const notifSnap = await db.collection('notifications')
-            .where('userId', '==', userId)
-            .where('isRead', '==', false)
-            .get();
+        const notifSnap = await db.ref('notifications')
+            .orderByChild('userId')
+            .equalTo(userId)
+            .once('value');
+
+        let notifications = queryToArray(notifSnap);
+        const unreadCount = notifications.filter(n => n.isRead === false).length;
 
         res.json({
             success: true,
@@ -75,7 +82,7 @@ export const getAdvocateDashboard = async (req, res) => {
                     thisMonth: advocate.monthlyEarnings || 0,
                     pending: advocate.pendingEarnings || 0
                 },
-                unreadNotifications: notifSnap.size
+                unreadNotifications: unreadCount
             }
         });
 
@@ -93,18 +100,23 @@ export const getAssignedCases = async (req, res) => {
         const userId = req.user._id;
         const { page = 1, limit = 10, status, urgency } = req.query;
 
-        const advSnap = await db.collection('advocates')
-            .where('userId', '==', userId)
-            .limit(1).get();
+        const advSnap = await db.ref('advocates')
+            .orderByChild('userId')
+            .equalTo(userId)
+            .limitToFirst(1)
+            .once('value');
 
-        if (advSnap.empty) {
+        if (!advSnap.exists()) {
             return res.status(404).json({ success: false, error: 'Advocate profile not found' });
         }
 
-        const advocate = { _id: advSnap.docs[0].id };
+        const advocatesArr = queryToArray(advSnap);
+        const advocate = advocatesArr[0];
 
-        let query = db.collection('cases').where('advocateId', '==', advocate._id);
-        const casesSnap = await query.get();
+        const casesSnap = await db.ref('cases')
+            .orderByChild('advocateId')
+            .equalTo(advocate._id)
+            .once('value');
         let cases = queryToArray(casesSnap);
 
         if (status) cases = cases.filter(c => c.status === status);
@@ -119,10 +131,10 @@ export const getAssignedCases = async (req, res) => {
         // Enrich with client info
         for (let c of cases) {
             if (c.clientId) {
-                const uDoc = await db.collection('users').doc(c.clientId).get();
-                if (uDoc.exists) {
-                    c.clientName = uDoc.data().name;
-                    c.clientEmail = uDoc.data().email;
+                const uSnapshot = await db.ref('users/' + c.clientId).once('value');
+                if (uSnapshot.exists()) {
+                    c.clientName = uSnapshot.val().name;
+                    c.clientEmail = uSnapshot.val().email;
                 }
             }
         }
@@ -152,30 +164,34 @@ export const getCaseRequests = async (req, res) => {
     try {
         const userId = req.user._id;
 
-        const advSnap = await db.collection('advocates')
-            .where('userId', '==', userId)
-            .limit(1).get();
+        const advSnap = await db.ref('advocates')
+            .orderByChild('userId')
+            .equalTo(userId)
+            .limitToFirst(1)
+            .once('value');
 
-        if (advSnap.empty) {
+        if (!advSnap.exists()) {
             return res.status(404).json({ success: false, error: 'Advocate profile not found' });
         }
 
-        const advocate = { _id: advSnap.docs[0].id };
+        const advocatesArr = queryToArray(advSnap);
+        const advocate = advocatesArr[0];
 
-        const casesSnap = await db.collection('cases')
-            .where('advocateId', '==', advocate._id)
-            .where('status', '==', 'pending_acceptance')
-            .get();
+        const casesSnap = await db.ref('cases')
+            .orderByChild('advocateId')
+            .equalTo(advocate._id)
+            .once('value');
 
-        let requests = queryToArray(casesSnap);
+        let allRequests = queryToArray(casesSnap);
+        let requests = allRequests.filter(c => c.status === 'pending_acceptance');
 
         // Enrich with client info
         for (let r of requests) {
             if (r.clientId) {
-                const uDoc = await db.collection('users').doc(r.clientId).get();
-                if (uDoc.exists) {
-                    r.clientName = uDoc.data().name;
-                    r.clientEmail = uDoc.data().email;
+                const uSnapshot = await db.ref('users/' + r.clientId).once('value');
+                if (uSnapshot.exists()) {
+                    r.clientName = uSnapshot.val().name;
+                    r.clientEmail = uSnapshot.val().email;
                 }
             }
         }
@@ -200,37 +216,40 @@ export const respondToRequest = async (req, res) => {
         const { action, reason } = req.body;
         const userId = req.user._id;
 
-        const advSnap = await db.collection('advocates')
-            .where('userId', '==', userId)
-            .limit(1).get();
+        const advSnap = await db.ref('advocates')
+            .orderByChild('userId')
+            .equalTo(userId)
+            .limitToFirst(1)
+            .once('value');
 
-        if (advSnap.empty) {
+        if (!advSnap.exists()) {
             return res.status(404).json({ success: false, error: 'Advocate profile not found' });
         }
 
-        const advocate = { _id: advSnap.docs[0].id, ...advSnap.docs[0].data() };
+        const advocatesArr = queryToArray(advSnap);
+        const advocate = advocatesArr[0];
 
-        const caseDoc = await db.collection('cases').doc(caseId).get();
-        if (!caseDoc.exists || caseDoc.data().advocateId !== advocate._id || caseDoc.data().status !== 'pending_acceptance') {
+        const caseSnapshot = await db.ref('cases/' + caseId).once('value');
+        if (!caseSnapshot.exists() || caseSnapshot.val().advocateId !== advocate._id || caseSnapshot.val().status !== 'pending_acceptance') {
             return res.status(404).json({ success: false, error: 'Case request not found' });
         }
 
-        const caseData = caseDoc.data();
+        const caseData = { _id: caseSnapshot.key, ...caseSnapshot.val() };
 
         if (action === 'accept') {
-            await db.collection('cases').doc(caseId).update({
+            await db.ref('cases/' + caseId).update({
                 status: 'assigned',
                 assignedAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString()
             });
 
             // Increment case load
-            await db.collection('advocates').doc(advocate._id).update({
+            await db.ref('advocates/' + advocate._id).update({
                 currentCaseLoad: (advocate.currentCaseLoad || 0) + 1
             });
 
             // Notify client
-            await db.collection('notifications').doc(generateId()).set({
+            await db.ref('notifications').push({
                 userId: caseData.clientId,
                 type: 'advocate_accepted',
                 title: 'Advocate Accepted Your Case',
@@ -241,13 +260,13 @@ export const respondToRequest = async (req, res) => {
             });
 
         } else if (action === 'reject') {
-            await db.collection('cases').doc(caseId).update({
+            await db.ref('cases/' + caseId).update({
                 advocateId: null,
                 status: 'submitted',
                 updatedAt: new Date().toISOString()
             });
 
-            await db.collection('notifications').doc(generateId()).set({
+            await db.ref('notifications').push({
                 userId: caseData.clientId,
                 type: 'advocate_rejected',
                 title: 'Advocate Unavailable',
@@ -259,7 +278,7 @@ export const respondToRequest = async (req, res) => {
         }
 
         // Log activity
-        await db.collection('activityLogs').doc(generateId()).set({
+        await db.ref('activityLogs').push({
             userId,
             action: action === 'accept' ? 'case_accept' : 'case_reject',
             entityType: 'case',
@@ -288,22 +307,25 @@ export const updateCaseStatus = async (req, res) => {
         const { status, notes } = req.body;
         const userId = req.user._id;
 
-        const advSnap = await db.collection('advocates')
-            .where('userId', '==', userId)
-            .limit(1).get();
+        const advSnap = await db.ref('advocates')
+            .orderByChild('userId')
+            .equalTo(userId)
+            .limitToFirst(1)
+            .once('value');
 
-        if (advSnap.empty) {
+        if (!advSnap.exists()) {
             return res.status(404).json({ success: false, error: 'Advocate profile not found' });
         }
 
-        const advocate = { _id: advSnap.docs[0].id, ...advSnap.docs[0].data() };
+        const advocatesArr = queryToArray(advSnap);
+        const advocate = advocatesArr[0];
 
-        const caseDoc = await db.collection('cases').doc(caseId).get();
-        if (!caseDoc.exists || caseDoc.data().advocateId !== advocate._id) {
+        const caseSnapshot = await db.ref('cases/' + caseId).once('value');
+        if (!caseSnapshot.exists() || caseSnapshot.val().advocateId !== advocate._id) {
             return res.status(404).json({ success: false, error: 'Case not found' });
         }
 
-        const caseData = caseDoc.data();
+        const caseData = caseSnapshot.val();
         const previousStatus = caseData.status;
 
         const timeline = caseData.timeline || [];
@@ -322,16 +344,16 @@ export const updateCaseStatus = async (req, res) => {
 
         if (status === 'completed') {
             updateData.completedAt = new Date().toISOString();
-            await db.collection('advocates').doc(advocate._id).update({
+            await db.ref('advocates/' + advocate._id).update({
                 currentCaseLoad: Math.max(0, (advocate.currentCaseLoad || 1) - 1),
                 totalCases: (advocate.totalCases || 0) + 1
             });
         }
 
-        await db.collection('cases').doc(caseId).update(updateData);
+        await db.ref('cases/' + caseId).update(updateData);
 
         // Notify client
-        await db.collection('notifications').doc(generateId()).set({
+        await db.ref('notifications').push({
             userId: caseData.clientId,
             type: 'case_update',
             title: 'Case Status Updated',
@@ -359,19 +381,23 @@ export const getAnalytics = async (req, res) => {
     try {
         const userId = req.user._id;
 
-        const advSnap = await db.collection('advocates')
-            .where('userId', '==', userId)
-            .limit(1).get();
+        const advSnap = await db.ref('advocates')
+            .orderByChild('userId')
+            .equalTo(userId)
+            .limitToFirst(1)
+            .once('value');
 
-        if (advSnap.empty) {
+        if (!advSnap.exists()) {
             return res.status(404).json({ success: false, error: 'Advocate profile not found' });
         }
 
-        const advocate = { _id: advSnap.docs[0].id, ...advSnap.docs[0].data() };
+        const advocatesArr = queryToArray(advSnap);
+        const advocate = advocatesArr[0];
 
-        const casesSnap = await db.collection('cases')
-            .where('advocateId', '==', advocate._id)
-            .get();
+        const casesSnap = await db.ref('cases')
+            .orderByChild('advocateId')
+            .equalTo(advocate._id)
+            .once('value');
         const allCases = queryToArray(casesSnap);
 
         const totalHandled = allCases.length;
@@ -386,9 +412,10 @@ export const getAnalytics = async (req, res) => {
         const categoryBreakdown = Object.entries(categoryMap).map(([_id, count]) => ({ _id, count })).sort((a, b) => b.count - a.count);
 
         // Recent reviews
-        const reviewsSnap = await db.collection('reviews')
-            .where('advocateId', '==', advocate._id)
-            .get();
+        const reviewsSnap = await db.ref('reviews')
+            .orderByChild('advocateId')
+            .equalTo(advocate._id)
+            .once('value');
         let reviews = queryToArray(reviewsSnap);
         reviews.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
         reviews = reviews.slice(0, 10);
@@ -476,15 +503,18 @@ export const updateProfile = async (req, res) => {
         const userId = req.user._id;
         const updates = req.body;
 
-        const advSnap = await db.collection('advocates')
-            .where('userId', '==', userId)
-            .limit(1).get();
+        const advSnap = await db.ref('advocates')
+            .orderByChild('userId')
+            .equalTo(userId)
+            .limitToFirst(1)
+            .once('value');
 
-        if (advSnap.empty) {
+        if (!advSnap.exists()) {
             return res.status(404).json({ success: false, error: 'Advocate profile not found' });
         }
 
-        const advocateId = advSnap.docs[0].id;
+        const advocatesArr = queryToArray(advSnap);
+        const advocateId = advocatesArr[0]._id;
         const allowedUpdates = [
             'specialization', 'experienceYears', 'bio', 'languages',
             'education', 'awards', 'feeRange', 'isAvailable',
@@ -502,13 +532,13 @@ export const updateProfile = async (req, res) => {
             updateData.isAcceptingCases = updates.isAvailable;
         }
 
-        await db.collection('advocates').doc(advocateId).update(updateData);
+        await db.ref('advocates/' + advocateId).update(updateData);
 
-        const updatedDoc = await db.collection('advocates').doc(advocateId).get();
+        const updatedSnapshot = await db.ref('advocates/' + advocateId).once('value');
 
         res.json({
             success: true,
-            data: { advocate: { _id: advocateId, ...updatedDoc.data() } }
+            data: { advocate: { _id: advocateId, ...updatedSnapshot.val() } }
         });
 
     } catch (error) {
@@ -525,19 +555,22 @@ export const toggleAvailability = async (req, res) => {
         const userId = req.user._id;
         const { isAcceptingCases } = req.body;
 
-        const advSnap = await db.collection('advocates')
-            .where('userId', '==', userId)
-            .limit(1).get();
+        const advSnap = await db.ref('advocates')
+            .orderByChild('userId')
+            .equalTo(userId)
+            .limitToFirst(1)
+            .once('value');
 
-        if (advSnap.empty) {
+        if (!advSnap.exists()) {
             return res.status(404).json({ success: false, error: 'Advocate profile not found' });
         }
 
-        const advocateId = advSnap.docs[0].id;
-        const current = advSnap.docs[0].data();
+        const advocatesArr = queryToArray(advSnap);
+        const advocateId = advocatesArr[0]._id;
+        const current = advocatesArr[0];
         const newVal = isAcceptingCases !== undefined ? isAcceptingCases : !current.isAcceptingCases;
 
-        await db.collection('advocates').doc(advocateId).update({
+        await db.ref('advocates/' + advocateId).update({
             isAcceptingCases: newVal,
             updatedAt: new Date().toISOString()
         });

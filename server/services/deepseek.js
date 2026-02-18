@@ -395,7 +395,7 @@ const deepseekService = {
                 tokensUsed: Math.floor(Math.random() * 200) + 100,
                 createdAt: new Date().toISOString()
             };
-            await db.collection('aiLogs').doc(generateId()).set(logData);
+            await db.ref('aiLogs').push(logData);
         } catch (error) {
             console.error('AI log error:', error);
         }

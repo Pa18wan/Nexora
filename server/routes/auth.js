@@ -11,12 +11,13 @@ router.post('/register', async (req, res) => {
         const { name, email, password, role, phone } = req.body;
 
         // Check if user exists
-        const existingSnapshot = await db.collection('users')
-            .where('email', '==', email.toLowerCase())
-            .limit(1)
-            .get();
+        const existingSnapshot = await db.ref('users')
+            .orderByChild('email')
+            .equalTo(email.toLowerCase())
+            .limitToFirst(1)
+            .once('value');
 
-        if (!existingSnapshot.empty) {
+        if (existingSnapshot.exists()) {
             return res.status(400).json({ success: false, message: 'User already exists with this email' });
         }
 
@@ -44,12 +45,12 @@ router.post('/register', async (req, res) => {
             updatedAt: new Date().toISOString()
         };
 
-        await db.collection('users').doc(userId).set(userData);
+        await db.ref('users/' + userId).set(userData);
 
         // If advocate, create advocate profile
         if (role === 'advocate') {
             const advocateId = generateId();
-            await db.collection('advocates').doc(advocateId).set({
+            await db.ref('advocates/' + advocateId).set({
                 userId: userId,
                 barCouncilId: req.body.barCouncilId || 'PENDING',
                 specialization: req.body.specialization || ['General Practice'],
@@ -98,17 +99,18 @@ router.post('/login', async (req, res) => {
         }
 
         // Find user by email
-        const userSnapshot = await db.collection('users')
-            .where('email', '==', email.toLowerCase())
-            .limit(1)
-            .get();
+        const userSnapshot = await db.ref('users')
+            .orderByChild('email')
+            .equalTo(email.toLowerCase())
+            .limitToFirst(1)
+            .once('value');
 
-        if (userSnapshot.empty) {
+        if (!userSnapshot.exists()) {
             return res.status(401).json({ success: false, message: 'Invalid credentials' });
         }
 
-        const userDoc = userSnapshot.docs[0];
-        const user = { _id: userDoc.id, ...userDoc.data() };
+        const users = queryToArray(userSnapshot);
+        const user = users[0];
 
         // Compare password
         const isMatch = await bcrypt.compare(password, user.password);
@@ -121,7 +123,7 @@ router.post('/login', async (req, res) => {
         }
 
         // Update last login
-        await db.collection('users').doc(user._id).update({
+        await db.ref('users/' + user._id).update({
             lastLogin: new Date().toISOString(),
             updatedAt: new Date().toISOString()
         });
@@ -131,12 +133,14 @@ router.post('/login', async (req, res) => {
         // Get advocate profile if advocate
         let advocateProfile = null;
         if (user.role === 'advocate') {
-            const advSnapshot = await db.collection('advocates')
-                .where('userId', '==', user._id)
-                .limit(1)
-                .get();
-            if (!advSnapshot.empty) {
-                advocateProfile = { _id: advSnapshot.docs[0].id, ...advSnapshot.docs[0].data() };
+            const advSnapshot = await db.ref('advocates')
+                .orderByChild('userId')
+                .equalTo(user._id)
+                .limitToFirst(1)
+                .once('value');
+            if (advSnapshot.exists()) {
+                const advocates = queryToArray(advSnapshot);
+                advocateProfile = advocates[0];
             }
         }
 
@@ -175,21 +179,23 @@ router.get('/me', async (req, res) => {
         const jwt = await import('jsonwebtoken');
         const decoded = jwt.default.verify(token, process.env.JWT_SECRET);
 
-        const userDoc = await db.collection('users').doc(decoded.id).get();
-        if (!userDoc.exists) {
+        const userSnapshot = await db.ref('users/' + decoded.id).once('value');
+        if (!userSnapshot.exists()) {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
 
-        const user = { _id: userDoc.id, ...userDoc.data() };
+        const user = docToObj(userSnapshot);
 
         let advocateProfile = null;
         if (user.role === 'advocate') {
-            const advSnapshot = await db.collection('advocates')
-                .where('userId', '==', user._id)
-                .limit(1)
-                .get();
-            if (!advSnapshot.empty) {
-                advocateProfile = { _id: advSnapshot.docs[0].id, ...advSnapshot.docs[0].data() };
+            const advSnapshot = await db.ref('advocates')
+                .orderByChild('userId')
+                .equalTo(user._id)
+                .limitToFirst(1)
+                .once('value');
+            if (advSnapshot.exists()) {
+                const advocates = queryToArray(advSnapshot);
+                advocateProfile = advocates[0];
             }
         }
 
@@ -226,8 +232,8 @@ router.put('/me', async (req, res) => {
         const jwt = await import('jsonwebtoken');
         const decoded = jwt.default.verify(token, process.env.JWT_SECRET);
 
-        const userDoc = await db.collection('users').doc(decoded.id).get();
-        if (!userDoc.exists) {
+        const userSnapshot = await db.ref('users/' + decoded.id).once('value');
+        if (!userSnapshot.exists()) {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
 
@@ -238,10 +244,10 @@ router.put('/me', async (req, res) => {
         if (phone !== undefined) updates.phone = phone;
         if (bio !== undefined) updates.bio = bio;
 
-        await db.collection('users').doc(decoded.id).update(updates);
+        await db.ref('users/' + decoded.id).update(updates);
 
-        const updatedDoc = await db.collection('users').doc(decoded.id).get();
-        const user = { _id: updatedDoc.id, ...updatedDoc.data() };
+        const updatedSnapshot = await db.ref('users/' + decoded.id).once('value');
+        const user = docToObj(updatedSnapshot);
         const avatarUrl = user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=4F8CFF&color=fff`;
 
         res.json({
@@ -277,8 +283,8 @@ router.put('/change-password', async (req, res) => {
         const jwt = await import('jsonwebtoken');
         const decoded = jwt.default.verify(token, process.env.JWT_SECRET);
 
-        const userDoc = await db.collection('users').doc(decoded.id).get();
-        if (!userDoc.exists) {
+        const userSnapshot = await db.ref('users/' + decoded.id).once('value');
+        if (!userSnapshot.exists()) {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
 
@@ -291,7 +297,7 @@ router.put('/change-password', async (req, res) => {
             return res.status(400).json({ success: false, message: 'New password must be at least 6 characters' });
         }
 
-        const userData = userDoc.data();
+        const userData = userSnapshot.val();
         const isMatch = await bcrypt.compare(currentPassword, userData.password);
         if (!isMatch) {
             return res.status(400).json({ success: false, message: 'Current password is incorrect' });
@@ -300,7 +306,7 @@ router.put('/change-password', async (req, res) => {
         const salt = await bcrypt.genSalt(12);
         const hashedPassword = await bcrypt.hash(newPassword, salt);
 
-        await db.collection('users').doc(decoded.id).update({
+        await db.ref('users/' + decoded.id).update({
             password: hashedPassword,
             updatedAt: new Date().toISOString()
         });

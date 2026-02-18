@@ -12,9 +12,9 @@ export const chat = async (req, res) => {
         let caseContext = null;
 
         if (caseId) {
-            const caseDoc = await db.collection('cases').doc(caseId).get();
-            if (caseDoc.exists) {
-                const caseData = caseDoc.data();
+            const caseSnapshot = await db.ref('cases/' + caseId).once('value');
+            if (caseSnapshot.exists()) {
+                const caseData = caseSnapshot.val();
                 if (caseData.clientId === userId) {
                     caseContext = {
                         title: caseData.title,
@@ -28,10 +28,12 @@ export const chat = async (req, res) => {
             }
         }
 
-        // Get recent conversation history from Firestore
-        const recentLogsSnap = await db.collection('aiLogs')
-            .where('userId', '==', userId)
-            .get();
+        // Get recent conversation history from RTDB
+        const recentLogsSnap = await db.ref('aiLogs')
+            .orderByChild('userId')
+            .equalTo(userId)
+            .limitToLast(10)
+            .once('value');
 
         let recentLogs = queryToArray(recentLogsSnap);
         recentLogs.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -74,20 +76,20 @@ export const getLogs = async (req, res) => {
         const userId = req.user._id;
         const { page = 1, limit = 20 } = req.query;
 
-        let query;
+        let logsSnap;
         if (req.user.role === 'admin') {
-            query = db.collection('aiLogs').orderBy('createdAt', 'desc');
+            logsSnap = await db.ref('aiLogs').once('value');
         } else {
-            query = db.collection('aiLogs')
-                .where('userId', '==', userId);
+            logsSnap = await db.ref('aiLogs')
+                .orderByChild('userId')
+                .equalTo(userId)
+                .once('value');
         }
 
-        const logsSnap = await query.get();
         let logs = queryToArray(logsSnap);
 
-        if (req.user.role !== 'admin') {
-            logs.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-        }
+        // Sort by createdAt desc in memory as RTDB sorting is limited
+        logs.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
         const total = logs.length;
         const startIndex = (parseInt(page) - 1) * parseInt(limit);
