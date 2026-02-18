@@ -75,6 +75,46 @@ app.get('/api/health', (req, res) => {
     });
 });
 
+// Debug endpoint - check Firebase connection and env vars
+app.get('/api/debug', async (req, res) => {
+    const { db } = await import('./config/firebase.js');
+    const checks = {
+        env: {
+            FIREBASE_PROJECT_ID: !!process.env.FIREBASE_PROJECT_ID,
+            FIREBASE_CLIENT_EMAIL: !!process.env.FIREBASE_CLIENT_EMAIL,
+            FIREBASE_PRIVATE_KEY: !!process.env.FIREBASE_PRIVATE_KEY,
+            FIREBASE_PRIVATE_KEY_LENGTH: process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.length : 0,
+            FIREBASE_DATABASE_URL: process.env.FIREBASE_DATABASE_URL || 'NOT SET (using default)',
+            FIREBASE_SERVICE_ACCOUNT_JSON: !!process.env.FIREBASE_SERVICE_ACCOUNT_JSON,
+            JWT_SECRET: !!process.env.JWT_SECRET,
+            NODE_ENV: process.env.NODE_ENV || 'not set'
+        },
+        firebase: {
+            initialized: false,
+            dbConnected: false,
+            error: null
+        }
+    };
+
+    try {
+        const admin = (await import('./config/firebase.js')).default;
+        checks.firebase.initialized = admin.apps.length > 0;
+
+        // Test RTDB connection
+        const testRef = db.ref('.info/connected');
+        const snap = await testRef.once('value');
+        checks.firebase.dbConnected = snap.val() === true;
+
+        // Try to read users count
+        const usersSnap = await db.ref('users').once('value');
+        checks.firebase.usersCount = usersSnap.numChildren();
+    } catch (error) {
+        checks.firebase.error = error.message;
+    }
+
+    res.json({ success: true, checks });
+});
+
 // Root route
 app.get('/', (req, res) => {
     res.json({
