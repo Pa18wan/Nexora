@@ -6,7 +6,7 @@ dotenv.config();
 // Initialize Firebase Admin
 try {
     if (!admin.apps.length) {
-        const databaseURL = process.env.FIREBASE_DATABASE_URL || 'https://user-db.firebaseio.com';
+        const databaseURL = process.env.FIREBASE_DATABASE_URL || 'https://nexora-3a845-default-rtdb.firebaseio.com/';
 
         if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
             const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);

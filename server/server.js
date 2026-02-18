@@ -36,10 +36,10 @@ const limiter = rateLimit({
 });
 app.use('/api/', limiter);
 
-// CORS
+// CORS - On Vercel, frontend and API are on the same domain, so allow all origins
 app.use(cors({
     origin: process.env.NODE_ENV === 'production'
-        ? process.env.CLIENT_URL
+        ? (process.env.CLIENT_URL || true) // true = allow all origins (same domain on Vercel)
         : ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:3000', 'http://127.0.0.1:5173', 'http://127.0.0.1:5174'],
     credentials: true
 }));
@@ -48,7 +48,7 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Static files
+// Static files (not available in serverless; uploads would need cloud storage in production)
 app.use('/uploads', express.static('uploads'));
 
 // API Routes
