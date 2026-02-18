@@ -59,15 +59,24 @@ try {
     console.error('❌ Full error:', error);
 }
 
-// Realtime Database
-const rtdb = admin.database();
-export const db = rtdb; // Export as db to keep import compatibility, but methods are different
+// Realtime Database - wrapped safely
+let rtdb = null;
+try {
+    rtdb = admin.database();
+} catch (error) {
+    console.error('❌ Failed to get RTDB instance:', error.message);
+}
+
+export const db = rtdb;
 
 // Firebase Auth
 export const auth = admin.apps.length ? admin.auth() : null;
 
 // Helper: Generate a unique ID
-export const generateId = () => rtdb.ref().push().key;
+export const generateId = () => {
+    if (!rtdb) throw new Error('Firebase RTDB not initialized');
+    return rtdb.ref().push().key;
+};
 
 // Helper: Server Timestamp
 export const timestamp = () => admin.database.ServerValue.TIMESTAMP;
