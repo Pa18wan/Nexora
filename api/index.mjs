@@ -31,7 +31,7 @@ export default async function handler(req, res) {
         console.error('❌ Handler error:', error.message);
         res.status(500).json({
             success: false,
-            message: 'Server initialization failed',
+            message: `Server Init Error: ${error.message}`,
             error: error.message,
             stack: error.stack
         });
