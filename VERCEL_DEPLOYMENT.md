@@ -1,5 +1,7 @@
 # 🚀 Vercel Deployment Guide — Nexora Legal Platform
 
+> **Live URL:** [https://nexora-olive.vercel.app/](https://nexora-olive.vercel.app/)
+
 ## Prerequisites
 - A [Vercel account](https://vercel.com/signup)
 - Your code pushed to a **GitHub** (or GitLab/Bitbucket) repository
@@ -83,10 +85,10 @@ After deployment, check these endpoints:
 
 | URL | Expected |
 |---|---|
-| `https://your-app.vercel.app/` | Landing page loads |
-| `https://your-app.vercel.app/api/health` | Returns JSON health check |
-| `https://your-app.vercel.app/login` | Login page loads |
-| `https://your-app.vercel.app/register` | Registration page loads |
+| `https://nexora-olive.vercel.app/` | Landing page loads |
+| `https://nexora-olive.vercel.app/api/health` | Returns JSON health check |
+| `https://nexora-olive.vercel.app/login` | Login page loads |
+| `https://nexora-olive.vercel.app/register` | Registration page loads |
 
 ---
 
