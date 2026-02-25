@@ -1,7 +1,6 @@
 # Dependencies
 node_modules/
 
-
 # Environment variables
 .env
 .env.local
@@ -37,7 +36,17 @@ pnpm-debug.log*
 # Client specific
 client/node_modules/
 client/dist/
+client/build_error.log
+client/build_error.txt
+client/tsc_errors.log
+client/tsc_errors.txt
+client/tsc_errors_2.txt
+client/*.tsbuildinfo
 
 # Server specific
 server/node_modules/
 server/uploads/
+server/.env
+
+# Vercel
+.vercel

@@ -11,6 +11,7 @@ function getApp() {
         appPromise = import('../server/server.js')
             .then(mod => {
                 cachedApp = mod.default;
+                console.log('✅ Server module loaded successfully');
                 return cachedApp;
             })
             .catch(err => {
@@ -31,9 +32,8 @@ export default async function handler(req, res) {
         console.error('❌ Handler error:', error.message);
         res.status(500).json({
             success: false,
-            message: `Server Init Error: ${error.message}`,
-            error: error.message,
-            stack: error.stack
+            message: 'Server initialization error. Please try again.',
+            error: process.env.NODE_ENV === 'production' ? 'Internal Server Error' : error.message
         });
     }
 }

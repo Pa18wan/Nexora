@@ -3,9 +3,15 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-// Load env vars FIRST
-dotenv.config();
+// Resolve __dirname for ESM
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Load env vars FIRST — resolve path relative to this file so it works both locally and on Vercel
+dotenv.config({ path: path.resolve(__dirname, '.env') });
 
 // Initialize Firebase (replaces MongoDB)
 import './config/firebase.js';
@@ -25,31 +31,39 @@ const app = express();
 
 // Security middleware
 app.use(helmet({
-    crossOriginResourcePolicy: { policy: "cross-origin" }
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+    contentSecurityPolicy: false // Disable CSP for development/SPA compatibility
 }));
 
-// Rate limiting
+// Rate limiting — use higher limit for serverless (cold starts can eat into the limit)
+const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL;
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 200, // 200 requests per window
-    message: { success: false, message: 'Too many requests, please try again later' }
+    max: isProduction ? 500 : 200, // Higher limit in production for serverless
+    message: { success: false, message: 'Too many requests, please try again later' },
+    standardHeaders: true,
+    legacyHeaders: false
 });
 app.use('/api/', limiter);
 
-// CORS - On Vercel, frontend and API are on the same domain, so allow all origins
+// CORS — On Vercel, frontend and API are on the same domain
 app.use(cors({
-    origin: process.env.NODE_ENV === 'production'
-        ? (process.env.CLIENT_URL || true) // true = allow all origins (same domain on Vercel)
+    origin: isProduction
+        ? true // Allow all origins on Vercel (same-domain deployment)
         : ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:3000', 'http://127.0.0.1:5173', 'http://127.0.0.1:5174'],
-    credentials: true
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 // Body parser
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Static files (not available in serverless; uploads would need cloud storage in production)
-app.use('/uploads', express.static('uploads'));
+// Static files — only serve locally (Vercel serverless has no persistent filesystem)
+if (!process.env.VERCEL) {
+    app.use('/uploads', express.static(path.resolve(__dirname, 'uploads')));
+}
 
 // API Routes
 app.use('/api/auth', authRoutes);
@@ -75,8 +89,11 @@ app.get('/api/health', (req, res) => {
     });
 });
 
-// Debug endpoint - check Firebase connection and env vars
+// Debug endpoint - check Firebase connection and env vars (disabled in production)
 app.get('/api/debug', async (req, res) => {
+    if (isProduction) {
+        return res.status(404).json({ success: false, message: 'Route not found' });
+    }
     const { db } = await import('./config/firebase.js');
     const checks = {
         env: {

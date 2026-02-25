@@ -14,6 +14,7 @@ export default defineConfig({
     },
     build: {
         chunkSizeWarningLimit: 1000,
+        sourcemap: false,
         rollupOptions: {
             output: {
                 manualChunks: {
@@ -23,5 +24,9 @@ export default defineConfig({
                 }
             }
         }
+    },
+    // Ensure environment variables are available at build time
+    define: {
+        'import.meta.env.VITE_APP_VERSION': JSON.stringify('2.0.0')
     }
 })
