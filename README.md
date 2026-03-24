@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="client/public/images/nexora-logo.png" alt="Nexora Logo" width="120" />
-</p>
-
 <h1 align="center">⚖️ Nexora — AI Legal Intelligence Platform</h1>
 
 <p align="center">
